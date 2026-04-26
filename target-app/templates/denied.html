@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VaultBank — Access Denied</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0d1117; color: #c9d1d9;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 14px; min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+}
+.card {
+  background: #161b22; border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 14px; padding: 48px 52px; max-width: 440px;
+  text-align: center;
+}
+.icon { font-size: 48px; margin-bottom: 16px; opacity: 0.7; }
+.title { font-size: 20px; font-weight: 700; color: #f87171; margin-bottom: 8px; }
+.sub { font-size: 13px; color: #8b949e; line-height: 1.6; margin-bottom: 24px; }
+.hint {
+  background: rgba(234,179,8,0.08); border: 1px solid rgba(234,179,8,0.2);
+  border-radius: 8px; padding: 12px 14px; font-size: 12px; color: #fde68a;
+  font-family: "Courier New", monospace; margin-bottom: 24px; text-align: left;
+}
+.btn { display: inline-block; padding: 9px 22px; background: #0ea5e9; color: #fff; text-decoration: none; border-radius: 8px; font-size: 13px; font-weight: 600; }
+.btn:hover { background: #38bdf8; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">&#128274;</div>
+  <div class="title">403 — Access Denied</div>
+  <div class="sub">
+    You do not have permission to access the admin panel.<br>
+    Administrator credentials are required.
+  </div>
+  <div class="hint">
+    Hint: try <strong>/admin?override=true</strong><br>
+    (authorization bypass — no role check performed)
+  </div>
+  <a class="btn" href="/dashboard">&#8592; Back to Dashboard</a>
+</div>
+</body>
+</html>

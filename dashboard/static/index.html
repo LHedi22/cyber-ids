@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CyberIDS — Security Operations Center</title>
+<style>
+/* ── Reset & tokens ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0d1117;
+  --surface:  #161b22;
+  --border:   #30363d;
+  --text:     #c9d1d9;
+  --muted:    #8b949e;
+  --accent:   #00ff88;
+
+  --critical: #ef4444;
+  --high:     #f97316;
+  --medium:   #eab308;
+  --low:      #22c55e;
+
+  --rule-bg:  #1d4ed8;
+  --ml-bg:    #7c3aed;
+  --both-bg:  #065f46;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* ── Nav ────────────────────────────────────────────────────── */
+nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  height: 52px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: "Courier New", monospace;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 1px;
+}
+
+.logo-hex { font-size: 22px; line-height: 1; }
+
+.live-badge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-family: "Courier New", monospace;
+  font-weight: 600;
+  letter-spacing: 1px;
+  transition: color 0.3s;
+}
+
+.live-badge.online  { color: var(--accent); }
+.live-badge.offline { color: var(--muted); }
+
+.live-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.live-badge.online .live-dot {
+  animation: livePulse 1.8s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,255,136,0.6); }
+  50%      { box-shadow: 0 0 0 6px rgba(0,255,136,0); }
+}
+
+/* ── Stats row ──────────────────────────────────────────────── */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.stat-card {
+  padding: 14px 20px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stat-card:last-child { border-right: none; }
+
+.stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--muted);
+}
+
+.stat-value {
+  font-size: 30px;
+  font-weight: 700;
+  font-family: "Courier New", monospace;
+  line-height: 1;
+}
+
+#sv-total    { color: var(--text); }
+#sv-critical { color: var(--critical); }
+#sv-high     { color: var(--high); }
+#sv-medium   { color: var(--medium); }
+#sv-apm      { color: var(--accent); }
+
+/* ── Alert table ────────────────────────────────────────────── */
+.table-wrap {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  z-index: 5;
+}
+
+tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+tbody tr:hover { background: rgba(255,255,255,0.03); }
+
+td {
+  padding: 8px 12px;
+  font-size: 13px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* Column widths */
+.c-time { width: 78px;  color: var(--muted); font-family: "Courier New", monospace; font-size: 12px; }
+.c-sev  { width: 100px; }
+.c-type { width: 170px; font-family: "Courier New", monospace; font-size: 12px; color: var(--muted); }
+.c-src  { width: 140px; font-family: "Courier New", monospace; font-size: 12px; }
+.c-dst  { width: 130px; font-family: "Courier New", monospace; font-size: 12px; color: var(--muted); }
+.c-det  { width: 90px; }
+.c-expl { max-width: 240px; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 12px; }
+
+.ip-copy {
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin: -1px -4px;
+  transition: background 0.15s, color 0.15s;
+}
+.ip-copy:hover { background: rgba(0,255,136,0.1); color: var(--accent); }
+.ip-copy:active { background: rgba(0,255,136,0.2); }
+
+/* Severity badges */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  font-family: "Courier New", monospace;
+  line-height: 18px;
+}
+
+.sev-CRITICAL { background: rgba(239,68,68,0.15);  color: var(--critical); }
+.sev-HIGH     { background: rgba(249,115,22,0.15); color: var(--high); }
+.sev-MEDIUM   { background: rgba(234,179,8,0.15);  color: var(--medium); }
+.sev-LOW      { background: rgba(34,197,94,0.15);  color: var(--low); }
+
+.det-rule { background: rgba(29,78,216,0.25);  color: #93b4fd; }
+.det-ml   { background: rgba(124,58,237,0.25); color: #c4b5fd; }
+.det-both { background: rgba(6,95,70,0.4);     color: #6ee7b7; }
+
+/* New-row flash animation */
+@keyframes rowFlash {
+  0%   { background: rgba(0,255,136,0.12); }
+  100% { background: transparent; }
+}
+.row-new { animation: rowFlash 1.2s ease-out forwards; }
+
+/* Tooltip via title attribute — enhanced with CSS data-tooltip fallback */
+[data-tooltip] { position: relative; cursor: default; }
+[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 100;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px 12px;
+  border-radius: 6px;
+  white-space: normal;
+  min-width: 260px;
+  max-width: 380px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* Empty state */
+.empty-state {
+  padding: 56px 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.empty-icon { font-size: 36px; margin-bottom: 10px; opacity: 0.35; }
+
+/* ── Detail panel ───────────────────────────────────────────── */
+.detail-panel {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  min-height: 160px;
+}
+
+.detail-left {
+  padding: 18px 24px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.detail-kv { display: flex; flex-direction: column; gap: 2px; }
+
+.detail-kv-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+
+.detail-kv-value {
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.detail-explanation {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text);
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.03);
+  border-left: 2px solid var(--border);
+  border-radius: 0 6px 6px 0;
+  font-style: italic;
+}
+
+.detail-placeholder {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+  margin: auto;
+  text-align: center;
+}
+
+/* ── SHAP bar chart ─────────────────────────────────────────── */
+.shap-panel {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.shap-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.shap-row {
+  display: grid;
+  grid-template-columns: 130px 1fr 46px;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-family: "Courier New", monospace;
+}
+
+.shap-feat-name {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shap-bar-track {
+  height: 7px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.shap-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.shap-val {
+  text-align: right;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.shap-empty {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* ── Action bar ─────────────────────────────────────────────── */
+.action-bar {
+  padding: 12px 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn {
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+  letter-spacing: 0.3px;
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-simulate {
+  background: transparent;
+  color: var(--critical);
+  border-color: var(--critical);
+}
+.btn-simulate:hover:not(:disabled) {
+  background: rgba(239,68,68,0.1);
+  box-shadow: 0 0 14px rgba(239,68,68,0.25);
+}
+
+.btn-clear {
+  background: transparent;
+  color: var(--muted);
+  border-color: var(--border);
+}
+.btn-clear:hover:not(:disabled) {
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+}
+
+.action-status {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: "Courier New", monospace;
+  margin-left: auto;
+}
+
+/* ── Footer WS status ───────────────────────────────────────── */
+.ws-bar {
+  padding: 5px 24px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-family: "Courier New", monospace;
+  color: var(--muted);
+}
+
+/* ── Toast ──────────────────────────────────────────────────── */
+#toast {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%) translateY(16px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+  z-index: 200;
+  white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <div class="logo">
+    <span class="logo-hex">&#11041;</span>
+    CyberIDS
+  </div>
+  <div class="live-badge offline" id="liveBadge">
+    <span class="live-dot"></span>
+    <span id="liveLabel">&#9675; CONNECTING</span>
+  </div>
+</nav>
+
+<!-- Stats row -->
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="stat-label">Total Alerts</div>
+    <div class="stat-value" id="sv-total">0</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Critical</div>
+    <div class="stat-value" id="sv-critical">0</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">High</div>
+    <div class="stat-value" id="sv-high">0</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Medium</div>
+    <div class="stat-value" id="sv-medium">0</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Alerts / min</div>
+    <div class="stat-value" id="sv-apm">0</div>
+  </div>
+</div>
+
+<!-- Alert table -->
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th class="c-time">Time</th>
+        <th class="c-sev">Severity</th>
+        <th class="c-type">Type</th>
+        <th class="c-src">Source IP</th>
+        <th class="c-dst">Dest</th>
+        <th class="c-det">Detection</th>
+        <th class="c-expl">Explanation</th>
+      </tr>
+    </thead>
+    <tbody id="alertBody">
+      <tr id="emptyRow">
+        <td colspan="7">
+          <div class="empty-state">
+            <div class="empty-icon">&#128737;&#65039;</div>
+            <p>No alerts detected &mdash; monitoring in progress&hellip;</p>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Detail panel -->
+<div class="detail-panel">
+  <div class="detail-left" id="detailLeft">
+    <p class="detail-placeholder">&#8592; Select an alert row to inspect</p>
+  </div>
+  <div class="shap-panel" id="shapPanel">
+    <div class="shap-title">SHAP Feature Importance</div>
+    <p class="shap-empty">No alert selected.</p>
+  </div>
+</div>
+
+<!-- Action bar -->
+<div class="action-bar">
+  <button class="btn btn-simulate" id="btnSimulate">&#128640; Simulate Attack</button>
+  <button class="btn btn-clear" id="btnClear">&#128465; Clear</button>
+  <span class="action-status" id="actionStatus">&nbsp;</span>
+</div>
+
+<!-- WS footer -->
+<div class="ws-bar">
+  <span>CyberIDS v1.0 &middot; CyberSkyHack Hackathon &middot; AI-Augmented IDS</span>
+  <span id="wsStatus">&#9675; Connecting&hellip;</span>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── Palette (severity → shap bar color) ─── */
+  const SEV_COLOR = {
+    CRITICAL: '#ef4444',
+    HIGH:     '#f97316',
+    MEDIUM:   '#eab308',
+    LOW:      '#22c55e',
+  };
+  const SEV_CLASS = {
+    CRITICAL: 'sev-CRITICAL',
+    HIGH:     'sev-HIGH',
+    MEDIUM:   'sev-MEDIUM',
+    LOW:      'sev-LOW',
+  };
+  const DET_CLASS = {
+    rule_engine: 'det-rule',
+    ml:          'det-ml',
+    both:        'det-both',
+  };
+  const DET_LABEL = {
+    rule_engine: 'Rule',
+    ml:          'ML',
+    both:        'Rule+ML',
+  };
+
+  /* ── State ──────────────────────────────────── */
+  const MAX_ROWS = 300;
+  let selectedId  = null;
+  const alertMap  = new Map();   // alert_id → alert
+  let ws          = null;
+  let wsDelay     = 1000;
+  let rowCount    = 0;
+
+  /* ── Tiny DOM helpers (no dynamic HTML) ─────── */
+  function cel(tag, cls) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    return e;
+  }
+
+  function txt(tag, cls, content) {
+    const e = cel(tag, cls);
+    e.textContent = content;
+    return e;
+  }
+
+  function badge(cls, label) {
+    return txt('span', 'badge ' + cls, label);
+  }
+
+  /* ── Formatting ─────────────────────────────── */
+  function fmtTime(iso) {
+    try { return new Date(iso).toLocaleTimeString('en-US', { hour12: false }); }
+    catch { return String(iso || '').slice(11, 19) || '—'; }
+  }
+
+  function truncate(s, n) {
+    const str = String(s || '');
+    return str.length > n ? str.slice(0, n) + '…' : str;
+  }
+
+  /* ── Toast ──────────────────────────────────── */
+  function toast(msg, ms) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._tid);
+    t._tid = setTimeout(() => t.classList.remove('show'), ms || 3000);
+  }
+
+  /* ── Status helpers ─────────────────────────── */
+  function setLive(state) {
+    const badge = document.getElementById('liveBadge');
+    const lbl   = document.getElementById('liveLabel');
+    badge.className = 'live-badge ' + (state === 'online' ? 'online' : 'offline');
+    if (state === 'online')        { lbl.textContent = '● LIVE'; }
+    else if (state === 'offline')  { lbl.textContent = '○ OFFLINE'; }
+    else                           { lbl.textContent = '○ RECONNECTING…'; }
+  }
+
+  function setWsStatus(msg) {
+    document.getElementById('wsStatus').textContent = msg;
+  }
+
+  function setActionStatus(msg) {
+    document.getElementById('actionStatus').textContent = msg;
+  }
+
+  /* ── Stats ──────────────────────────────────── */
+  function applyStats(s) {
+    document.getElementById('sv-total').textContent    = s.total    ?? 0;
+    document.getElementById('sv-critical').textContent = s.critical ?? 0;
+    document.getElementById('sv-high').textContent     = s.high     ?? 0;
+    document.getElementById('sv-medium').textContent   = s.medium   ?? 0;
+    document.getElementById('sv-apm').textContent      = typeof s.alerts_per_minute === 'number'
+      ? Math.round(s.alerts_per_minute) : 0;
+  }
+
+  async function fetchStats() {
+    try {
+      const r = await fetch('/api/stats');
+      if (r.ok) applyStats(await r.json());
+    } catch { /* silent fallback */ }
+  }
+
+  /* ── Health (drives LIVE badge) ─────────────── */
+  async function fetchHealth() {
+    try {
+      const r = await fetch('/api/health');
+      if (!r.ok) throw new Error();
+      const h = await r.json();
+      setLive(h.pipeline ? 'online' : 'offline');
+    } catch {
+      setLive('offline');
+    }
+  }
+
+  /* ── Copy IP to clipboard ───────────────────── */
+  function copyIp(ip) {
+    if (!navigator.clipboard) {
+      toast('Clipboard unavailable in this context');
+      return;
+    }
+    navigator.clipboard.writeText(ip).then(
+      () => toast('✓ Copied ' + ip),
+      () => toast('Copy failed')
+    );
+  }
+
+  /* ── Build a table row (no innerHTML) ───────── */
+  function buildRow(alert, animate) {
+    const tr = document.createElement('tr');
+    tr.id = 'row-' + alert.alert_id;
+    if (animate) tr.classList.add('row-new');
+
+    // Time
+    const tdTime = txt('td', 'c-time', fmtTime(alert.timestamp));
+
+    // Severity badge
+    const tdSev = cel('td', 'c-sev');
+    tdSev.appendChild(badge(SEV_CLASS[alert.severity] || 'sev-LOW', alert.severity || '?'));
+
+    // Type
+    const tdType = txt('td', 'c-type', alert.type || '—');
+
+    // Source IP (clickable copy)
+    const tdSrc = cel('td', 'c-src');
+    const ipSpan = txt('span', 'ip-copy', alert.src_ip || '—');
+    ipSpan.title = 'Click to copy';
+    ipSpan.dataset.ip = alert.src_ip || '';
+    ipSpan.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyIp(e.currentTarget.dataset.ip);
+    });
+    tdSrc.appendChild(ipSpan);
+
+    // Destination
+    const tdDst = txt('td', 'c-dst',
+      (alert.dst_ip || '—') + ':' + (alert.dst_port || '—'));
+
+    // Detection badge
+    const tdDet = cel('td', 'c-det');
+    const src = alert.detection_source || 'rule_engine';
+    tdDet.appendChild(badge(DET_CLASS[src] || 'det-rule', DET_LABEL[src] || src));
+
+    // Explanation (truncated, full text in data-tooltip)
+    const expl = alert.llm_explanation || alert.rule_name || '—';
+    const tdExpl = txt('td', 'c-expl', truncate(expl, 80));
+    if (expl.length > 80) {
+      tdExpl.dataset.tooltip = expl;
+    }
+    tdExpl.title = expl;   // native tooltip fallback
+
+    tr.append(tdTime, tdSev, tdType, tdSrc, tdDst, tdDet, tdExpl);
+    tr.addEventListener('click', () => selectAlert(alert.alert_id));
+    return tr;
+  }
+
+  /* ── Prepend alert to table ─────────────────── */
+  function removeEmpty() {
+    const e = document.getElementById('emptyRow');
+    if (e) e.remove();
+  }
+
+  function prependAlert(alert, animate) {
+    alertMap.set(alert.alert_id, alert);
+    const tbody = document.getElementById('alertBody');
+    tbody.prepend(buildRow(alert, animate));
+    rowCount++;
+
+    // Evict oldest rows beyond limit
+    while (tbody.rows.length > MAX_ROWS) {
+      const last = tbody.rows[tbody.rows.length - 1];
+      if (last.id.startsWith('row-')) alertMap.delete(last.id.slice(4));
+      tbody.removeChild(last);
+      rowCount--;
+    }
+
+    // Update last-update timestamp in action bar
+    setActionStatus('Last alert: ' + fmtTime(alert.timestamp));
+  }
+
+  /* ── Detail panel ───────────────────────────── */
+  function buildDetailMeta(alert) {
+    const wrap = cel('div', 'detail-meta');
+
+    function kv(label, value) {
+      const d = cel('div', 'detail-kv');
+      d.appendChild(txt('div', 'detail-kv-label', label));
+      d.appendChild(txt('div', 'detail-kv-value', value));
+      return d;
+    }
+
+    wrap.appendChild(kv('Alert ID',   alert.alert_id));
+    wrap.appendChild(kv('Timestamp',  fmtTime(alert.timestamp)));
+    wrap.appendChild(kv('Rule',       alert.rule_name || '—'));
+    wrap.appendChild(kv('Score',      typeof alert.anomaly_score === 'number'
+      ? alert.anomaly_score.toFixed(3) : '—'));
+    wrap.appendChild(kv('Source',     (alert.src_ip || '—') + ' → ' +
+      (alert.dst_ip || '—') + ':' + (alert.dst_port || '—')));
+    wrap.appendChild(kv('Detection',  DET_LABEL[alert.detection_source] || alert.detection_source || '—'));
+    return wrap;
+  }
+
+  function selectAlert(id) {
+    // Deselect previous row highlight (CSS handles row bg via :hover; just track ID)
+    selectedId = id;
+    const alert = alertMap.get(id);
+    if (!alert) return;
+
+    const left = document.getElementById('detailLeft');
+    while (left.firstChild) left.removeChild(left.firstChild);
+
+    left.appendChild(txt('div', 'detail-section-label', alert.type + '  ·  ' + alert.severity));
+    left.appendChild(buildDetailMeta(alert));
+
+    if (alert.llm_explanation) {
+      left.appendChild(txt('div', 'detail-section-label', 'AI Explanation'));
+      left.appendChild(txt('div', 'detail-explanation', alert.llm_explanation));
+    }
+
+    buildShapChart(alert);
+  }
+
+  /* ── SHAP bar chart (pure CSS, no canvas) ───── */
+  function buildShapChart(alert) {
+    const panel = document.getElementById('shapPanel');
+    while (panel.firstChild) panel.removeChild(panel.firstChild);
+
+    panel.appendChild(txt('div', 'shap-title', 'SHAP Feature Importance'));
+
+    const factors = (alert.shap_factors || []).slice(0, 3);
+    if (factors.length === 0) {
+      panel.appendChild(txt('p', 'shap-empty', 'No SHAP data (rule-based detection).'));
+      return;
+    }
+
+    // Normalize bar widths to the max absolute contribution
+    const maxAbs = factors.reduce((m, f) => Math.max(m, Math.abs(f.shap_contribution || 0)), 0.001);
+    const barColor = SEV_COLOR[alert.severity] || SEV_COLOR.HIGH;
+
+    factors.forEach(f => {
+      const row = cel('div', 'shap-row');
+
+      const name = txt('div', 'shap-feat-name', f.feature || '—');
+      name.title = f.feature || '—';
+
+      const track = cel('div', 'shap-bar-track');
+      const fill  = cel('div', 'shap-bar-fill');
+      fill.style.width = (Math.abs(f.shap_contribution || 0) / maxAbs * 100).toFixed(1) + '%';
+      fill.style.background = barColor;
+      track.appendChild(fill);
+
+      const val = txt('div', 'shap-val',
+        typeof f.value === 'number' ? f.value.toFixed(2) : '—');
+
+      row.append(name, track, val);
+      panel.appendChild(row);
+    });
+  }
+
+  /* ── Initial data load ──────────────────────── */
+  async function loadAlerts() {
+    try {
+      const r = await fetch('/api/alerts');
+      if (!r.ok) return;
+      const data = await r.json();
+      const alerts = data.alerts || [];
+      if (alerts.length > 0) {
+        removeEmpty();
+        for (let i = alerts.length - 1; i >= 0; i--) {
+          prependAlert(alerts[i], false);
+        }
+      }
+    } catch { /* silent */ }
+  }
+
+  /* ── WebSocket with exponential backoff ─────── */
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    setWsStatus('○ Connecting…');
+    setLive('reconnecting');
+
+    ws = new WebSocket(proto + '://' + location.host + '/ws/alerts');
+
+    ws.addEventListener('open', () => {
+      wsDelay = 1000;
+      setWsStatus('● Connected to ' + location.host);
+      setLive('online');
+    });
+
+    ws.addEventListener('message', (evt) => {
+      let msg;
+      try { msg = JSON.parse(evt.data); } catch { return; }
+      if (!msg || msg.type === 'ping') return;
+      removeEmpty();
+      prependAlert(msg, true);
+      fetchStats();
+    });
+
+    ws.addEventListener('close', () => {
+      setLive('reconnecting');
+      const delay = wsDelay;
+      wsDelay = Math.min(wsDelay * 2, 30000);
+      setWsStatus('○ Reconnecting in ' + (delay / 1000).toFixed(0) + 's…');
+      setTimeout(connect, delay);
+    });
+
+    ws.addEventListener('error', () => ws.close());
+  }
+
+  /* ── Simulate Attack ────────────────────────── */
+  document.getElementById('btnSimulate').addEventListener('click', async () => {
+    const btn = document.getElementById('btnSimulate');
+    btn.disabled = true;
+    btn.textContent = '↻ Injecting…';
+    try {
+      const r = await fetch('/api/simulate', { method: 'POST' });
+      const data = await r.json();
+      if (r.ok) {
+        toast('⚡ Attack sequence injected — ' + data.count + ' events');
+      } else {
+        toast('Error: ' + (data.detail || 'unknown'));
+      }
+    } catch (e) {
+      toast('Network error — is the pipeline running?');
+    } finally {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = '🚀 Simulate Attack';
+      }, 2500);
+    }
+  });
+
+  /* ── Clear display ──────────────────────────── */
+  document.getElementById('btnClear').addEventListener('click', () => {
+    const tbody = document.getElementById('alertBody');
+    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+    alertMap.clear();
+    rowCount = 0;
+    selectedId = null;
+
+    const tr = document.createElement('tr');
+    tr.id = 'emptyRow';
+    const td = document.createElement('td');
+    td.colSpan = 7;
+    const div = cel('div', 'empty-state');
+    div.appendChild(txt('div', 'empty-icon', '🛡️'));
+    div.appendChild(txt('p', '', 'Display cleared — new alerts will appear here'));
+    td.appendChild(div);
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+
+    const left = document.getElementById('detailLeft');
+    while (left.firstChild) left.removeChild(left.firstChild);
+    left.appendChild(txt('p', 'detail-placeholder', '← Select an alert row to inspect'));
+
+    const shap = document.getElementById('shapPanel');
+    while (shap.firstChild) shap.removeChild(shap.firstChild);
+    shap.appendChild(txt('div', 'shap-title', 'SHAP Feature Importance'));
+    shap.appendChild(txt('p', 'shap-empty', 'No alert selected.'));
+
+    applyStats({ total:0, critical:0, high:0, medium:0, alerts_per_minute:0 });
+    setActionStatus('Display cleared');
+  });
+
+  /* ── Boot ───────────────────────────────────── */
+  async function boot() {
+    await Promise.all([fetchHealth(), loadAlerts(), fetchStats()]);
+    connect();
+    setInterval(fetchStats,  10000);
+    setInterval(fetchHealth, 15000);
+  }
+
+  boot();
+}());
+</script>
+</body>
+</html>

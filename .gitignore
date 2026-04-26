@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+models/*.pkl
+models/*.joblib
+data/*.jsonl
+data/*.json
+.env
+*.egg-info/
+dist/
+build/
+.DS_Store

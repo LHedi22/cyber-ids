@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VaultBank — Sign In</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #0d1117;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-image:
+    radial-gradient(ellipse at 20% 50%, rgba(14,165,233,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 20%, rgba(14,165,233,0.04) 0%, transparent 50%);
+}
+
+.page-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  width: 100%;
+  padding: 24px;
+}
+
+/* Logo */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+}
+
+.brand-name {
+  font-size: 26px;
+  font-weight: 700;
+  color: #f0f6fc;
+  letter-spacing: -0.3px;
+}
+
+.brand-name span {
+  color: #0ea5e9;
+}
+
+/* Card */
+.card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 14px;
+  padding: 40px 44px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+}
+
+.card-header {
+  margin-bottom: 28px;
+}
+
+.card-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #f0f6fc;
+  margin-bottom: 4px;
+}
+
+.card-sub {
+  font-size: 13px;
+  color: #8b949e;
+}
+
+/* Form */
+.field {
+  margin-bottom: 18px;
+}
+
+.field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #c9d1d9;
+  margin-bottom: 6px;
+}
+
+.field input {
+  width: 100%;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: #f0f6fc;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  font-family: inherit;
+}
+
+.field input:focus {
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 3px rgba(14,165,233,0.15);
+}
+
+.field input::placeholder { color: #484f58; }
+
+.btn-signin {
+  width: 100%;
+  background: #0ea5e9;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 11px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+  margin-top: 6px;
+  letter-spacing: 0.2px;
+}
+
+.btn-signin:hover {
+  background: #38bdf8;
+  box-shadow: 0 0 16px rgba(14,165,233,0.3);
+}
+
+.btn-signin:active { transform: scale(0.99); }
+
+/* Error */
+.error-box {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 8px;
+  padding: 11px 14px;
+  font-size: 13px;
+  color: #fca5a5;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Divider */
+.divider {
+  text-align: center;
+  font-size: 12px;
+  color: #484f58;
+  margin: 20px 0 16px;
+  position: relative;
+}
+
+.divider::before, .divider::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 38%;
+  height: 1px;
+  background: #30363d;
+}
+
+.divider::before { left: 0; }
+.divider::after  { right: 0; }
+
+/* Demo creds hint */
+.demo-creds {
+  background: rgba(14,165,233,0.06);
+  border: 1px solid rgba(14,165,233,0.15);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 12px;
+  color: #8b949e;
+}
+
+.demo-creds strong { color: #93c5fd; display: block; margin-bottom: 4px; }
+.demo-creds code {
+  font-family: "Courier New", monospace;
+  background: rgba(0,0,0,0.3);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: #7dd3fc;
+}
+
+/* Footer */
+.login-footer {
+  font-size: 12px;
+  color: #484f58;
+  text-align: center;
+}
+
+.login-footer a { color: #0ea5e9; text-decoration: none; }
+.login-footer a:hover { text-decoration: underline; }
+
+/* Trust badges */
+.trust-row {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.trust-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #484f58;
+}
+
+.trust-icon { color: #22c55e; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <a class="brand" href="/login">
+    <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="2" y="5" width="32" height="26" rx="4" fill="#0ea5e9" fill-opacity="0.1" stroke="#0ea5e9" stroke-width="1.5"/>
+      <circle cx="17" cy="18" r="8" stroke="#0ea5e9" stroke-width="1.5"/>
+      <circle cx="17" cy="18" r="2.5" fill="#0ea5e9"/>
+      <line x1="17" y1="10" x2="17" y2="12.5" stroke="#0ea5e9" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="25" y1="18" x2="22.5" y2="18" stroke="#0ea5e9" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="17" y1="26" x2="17" y2="23.5" stroke="#0ea5e9" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="9" y1="18" x2="11.5" y2="18" stroke="#0ea5e9" stroke-width="1.5" stroke-linecap="round"/>
+      <rect x="27" y="14" width="3.5" height="8" rx="1.75" fill="#0ea5e9" fill-opacity="0.5"/>
+      <circle cx="4" cy="9" r="1.5" fill="#0ea5e9" fill-opacity="0.5"/>
+      <circle cx="4" cy="27" r="1.5" fill="#0ea5e9" fill-opacity="0.5"/>
+      <circle cx="30" cy="9" r="1.5" fill="#0ea5e9" fill-opacity="0.5"/>
+      <circle cx="30" cy="27" r="1.5" fill="#0ea5e9" fill-opacity="0.5"/>
+    </svg>
+    <div class="brand-name">Vault<span>Bank</span></div>
+  </a>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Welcome back</div>
+      <div class="card-sub">Sign in to access your account</div>
+    </div>
+
+    {% if error %}
+    <div class="error-box">
+      <span>&#9888;</span>
+      {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/login" autocomplete="off">
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username"
+               placeholder="Enter your username"
+               value="{{ request.form.get('username', '') }}"
+               autofocus required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password"
+               placeholder="Enter your password" required>
+      </div>
+      <button type="submit" class="btn-signin">Sign In</button>
+    </form>
+
+    <div class="divider">demo credentials</div>
+
+    <div class="demo-creds">
+      <strong>&#128274; Test Accounts</strong>
+      alice / <code>alice123</code> &nbsp;&middot;&nbsp;
+      bob / <code>bob456</code> &nbsp;&middot;&nbsp;
+      admin / <code>admin</code>
+    </div>
+  </div>
+
+  <div class="trust-row">
+    <div class="trust-item"><span class="trust-icon">&#10003;</span> 256-bit SSL</div>
+    <div class="trust-item"><span class="trust-icon">&#10003;</span> FDIC Insured</div>
+    <div class="trust-item"><span class="trust-icon">&#10003;</span> 24/7 Monitoring</div>
+  </div>
+
+  <div class="login-footer">
+    &copy; 2026 VaultBank Financial Services &nbsp;&middot;&nbsp;
+    <a href="#">Privacy Policy</a> &nbsp;&middot;&nbsp;
+    <a href="#">Terms of Service</a>
+  </div>
+
+</div>
+</body>
+</html>

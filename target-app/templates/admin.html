@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VaultBank — Admin Panel</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0d1117; color: #c9d1d9;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+  font-size: 14px; min-height: 100vh;
+}
+nav {
+  background: #161b22; border-bottom: 1px solid #30363d;
+  padding: 0 32px; height: 58px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 10;
+}
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.brand-name { font-size: 20px; font-weight: 700; color: #f0f6fc; }
+.brand-name em { color: #0ea5e9; font-style: normal; }
+.nav-links { display: flex; align-items: center; gap: 4px; }
+.nav-link { padding: 6px 14px; border-radius: 6px; color: #8b949e; text-decoration: none; font-size: 13px; font-weight: 500; transition: background 0.15s, color 0.15s; }
+.nav-link:hover { background: rgba(255,255,255,0.05); color: #c9d1d9; }
+.nav-link.active { background: rgba(239,68,68,0.1); color: #f87171; }
+.nav-right { display: flex; align-items: center; gap: 14px; }
+.user-pill { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.04); border: 1px solid #30363d; border-radius: 20px; padding: 5px 12px 5px 6px; }
+.user-avatar { width: 28px; height: 28px; background: linear-gradient(135deg, #ef4444, #7c3aed); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; text-transform: uppercase; }
+.user-name { font-size: 13px; color: #c9d1d9; font-weight: 500; }
+.btn-logout { padding: 6px 14px; background: transparent; border: 1px solid #30363d; border-radius: 6px; color: #8b949e; font-size: 12px; cursor: pointer; text-decoration: none; font-family: inherit; }
+.btn-logout:hover { background: rgba(239,68,68,0.08); color: #f87171; border-color: rgba(239,68,68,0.3); }
+
+main { max-width: 1080px; margin: 0 auto; padding: 32px 24px; display: grid; gap: 24px; }
+
+.admin-banner {
+  background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25);
+  border-radius: 12px; padding: 18px 24px;
+  display: flex; align-items: center; gap: 14px;
+}
+.admin-banner-icon { font-size: 24px; }
+.admin-banner-title { font-size: 16px; font-weight: 700; color: #f87171; margin-bottom: 2px; }
+.admin-banner-sub { font-size: 12px; color: #8b949e; }
+
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 18px 20px; }
+.stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #8b949e; margin-bottom: 6px; }
+.stat-value { font-size: 24px; font-weight: 700; font-family: "Courier New", monospace; }
+
+.section-title { font-size: 15px; font-weight: 600; color: #f0f6fc; margin-bottom: 14px; }
+.card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; overflow: hidden; }
+.card table { width: 100%; border-collapse: collapse; }
+.card thead th {
+  padding: 12px 16px; text-align: left; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 1px; color: #8b949e; border-bottom: 1px solid #30363d; font-weight: 500;
+}
+.card tbody tr { border-bottom: 1px solid #21262d; transition: background 0.1s; }
+.card tbody tr:last-child { border-bottom: none; }
+.card tbody tr:hover { background: rgba(255,255,255,0.02); }
+.card td { padding: 13px 16px; font-size: 13px; vertical-align: middle; }
+.mono { font-family: "Courier New", monospace; font-size: 12px; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; font-family: "Courier New", monospace; }
+.badge-admin { background: rgba(239,68,68,0.15); color: #f87171; }
+.badge-user  { background: rgba(14,165,233,0.15); color: #38bdf8; }
+.balance-positive { color: #22c55e; font-family: "Courier New", monospace; font-weight: 600; }
+.balance-large { color: #f59e0b; font-family: "Courier New", monospace; font-weight: 600; }
+
+.sys-info { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 20px; }
+.sys-row { display: flex; gap: 8px; padding: 8px 0; border-bottom: 1px solid #21262d; font-size: 12px; font-family: "Courier New", monospace; }
+.sys-row:last-child { border-bottom: none; }
+.sys-key { color: #8b949e; width: 200px; flex-shrink: 0; }
+.sys-val { color: #c9d1d9; }
+.sys-val.vuln { color: #f87171; }
+</style>
+</head>
+<body>
+<nav>
+  <a class="brand" href="/dashboard">
+    <svg width="30" height="30" viewBox="0 0 36 36" fill="none">
+      <rect x="2" y="5" width="32" height="26" rx="4" fill="#0ea5e9" fill-opacity="0.1" stroke="#0ea5e9" stroke-width="1.5"/>
+      <circle cx="17" cy="18" r="8" stroke="#0ea5e9" stroke-width="1.5"/>
+      <circle cx="17" cy="18" r="2.5" fill="#0ea5e9"/>
+      <line x1="17" y1="10" x2="17" y2="12.5" stroke="#0ea5e9" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="25" y1="18" x2="22.5" y2="18" stroke="#0ea5e9" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="17" y1="26" x2="17" y2="23.5" stroke="#0ea5e9" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="9" y1="18" x2="11.5" y2="18" stroke="#0ea5e9" stroke-width="1.5" stroke-linecap="round"/>
+      <rect x="27" y="14" width="3.5" height="8" rx="1.75" fill="#0ea5e9" fill-opacity="0.5"/>
+    </svg>
+    <div class="brand-name">Vault<em>Bank</em></div>
+  </a>
+  <div class="nav-links">
+    <a class="nav-link" href="/dashboard">Overview</a>
+    <a class="nav-link" href="/transfer">Transfer</a>
+    <a class="nav-link active" href="/admin">Admin</a>
+  </div>
+  <div class="nav-right">
+    <div class="user-pill">
+      <div class="user-avatar">{{ user[0]|upper }}</div>
+      <div class="user-name">{{ user }}</div>
+    </div>
+    <a class="btn-logout" href="/logout">Sign out</a>
+  </div>
+</nav>
+
+<main>
+  <div class="admin-banner">
+    <div class="admin-banner-icon">&#9888;</div>
+    <div>
+      <div class="admin-banner-title">Administrator Access</div>
+      <div class="admin-banner-sub">
+        Full user data and system configuration visible.
+        Also accessible via <span style="font-family:monospace;">/admin?override=true</span> (authorization bypass).
+      </div>
+    </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Total Users</div>
+      <div class="stat-value" style="color:#0ea5e9;">{{ users|length }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total AUM</div>
+      <div class="stat-value" style="color:#f59e0b;">${{ "{:,.2f}".format(total_balance) }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active Sessions</div>
+      <div class="stat-value" style="color:#22c55e;">1</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Security Alerts</div>
+      <div class="stat-value" style="color:#ef4444;">3</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-title">User Accounts</div>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Full Name</th>
+            <th>Role</th>
+            <th>Account No.</th>
+            <th>Password (Plaintext)</th>
+            <th style="text-align:right;">Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for uname, udata in users.items() %}
+          <tr>
+            <td class="mono">{{ uname }}</td>
+            <td>{{ udata.name }}</td>
+            <td><span class="badge badge-{{ udata.role }}">{{ udata.role }}</span></td>
+            <td class="mono">{{ udata.acct }}</td>
+            <td class="mono" style="color:#f87171;">{{ udata.password }}</td>
+            <td style="text-align:right;">
+              <span class="{{ 'balance-large' if udata.balance > 100000 else 'balance-positive' }}">
+                ${{ "{:,.2f}".format(udata.balance) }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-title">System Configuration</div>
+    <div class="sys-info">
+      <div class="sys-row">
+        <span class="sys-key">app.secret_key</span>
+        <span class="sys-val vuln">vaultbank_secret_2024</span>
+      </div>
+      <div class="sys-row">
+        <span class="sys-key">CSRF_PROTECTION</span>
+        <span class="sys-val vuln">DISABLED</span>
+      </div>
+      <div class="sys-row">
+        <span class="sys-key">RATE_LIMITING</span>
+        <span class="sys-val vuln">DISABLED</span>
+      </div>
+      <div class="sys-row">
+        <span class="sys-key">LOGIN_PARAMETERISED</span>
+        <span class="sys-val vuln">FALSE (string concat)</span>
+      </div>
+      <div class="sys-row">
+        <span class="sys-key">TRANSFER_AUTH_CHECK</span>
+        <span class="sys-val vuln">FALSE (from_account trusted)</span>
+      </div>
+      <div class="sys-row">
+        <span class="sys-key">ADMIN_BYPASS</span>
+        <span class="sys-val vuln">?override=true (no auth)</span>
+      </div>
+      <div class="sys-row">
+        <span class="sys-key">PASSWORD_STORAGE</span>
+        <span class="sys-val vuln">PLAINTEXT (no hashing)</span>
+      </div>
+      <div class="sys-row">
+        <span class="sys-key">DATABASE</span>
+        <span class="sys-val">In-memory Python dict</span>
+      </div>
+      <div class="sys-row">
+        <span class="sys-key">ENVIRONMENT</span>
+        <span class="sys-val">VaultBank Financial Services v2.1.4</span>
+      </div>
+    </div>
+  </div>
+</main>
+</body>
+</html>

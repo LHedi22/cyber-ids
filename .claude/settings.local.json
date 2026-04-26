@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install *)",
+      "Bash(python -c \"import sys; sys.path.insert\\(0, 'venv/lib/python3.12/site-packages'\\); import dotenv; print\\('dotenv ok'\\)\")",
+      "Bash(python *)",
+      "Skill(update-config)",
+      "Bash(venv/bin/python --version)",
+      "Bash(venv/Scripts/python.exe *)",
+      "Bash(cmd *)",
+      "Bash(powershell *)",
+      "Bash(wsl python3 *)",
+      "Bash(wsl which *)",
+      "Bash(wsl *)",
+      "Bash(wsl.exe *)"
+    ]
+  }
+}

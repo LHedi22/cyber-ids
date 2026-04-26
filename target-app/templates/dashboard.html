@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VaultBank — Dashboard</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+  font-size: 14px;
+  min-height: 100vh;
+}
+nav {
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  padding: 0 32px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.brand-name { font-size: 20px; font-weight: 700; color: #f0f6fc; }
+.brand-name em { color: #0ea5e9; font-style: normal; }
+.nav-links { display: flex; align-items: center; gap: 4px; }
+.nav-link {
+  padding: 6px 14px; border-radius: 6px; color: #8b949e;
+  text-decoration: none; font-size: 13px; font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+}
+.nav-link:hover { background: rgba(255,255,255,0.05); color: #c9d1d9; }
+.nav-link.active { background: rgba(14,165,233,0.1); color: #38bdf8; }
+.nav-right { display: flex; align-items: center; gap: 14px; }
+.user-pill {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid #30363d; border-radius: 20px; padding: 5px 12px 5px 6px;
+}
+.user-avatar {
+  width: 28px; height: 28px;
+  background: linear-gradient(135deg, #0ea5e9, #7c3aed);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: #fff; text-transform: uppercase;
+}
+.user-name { font-size: 13px; color: #c9d1d9; font-weight: 500; }
+.btn-logout {
+  padding: 6px 14px; background: transparent; border: 1px solid #30363d;
+  border-radius: 6px; color: #8b949e; font-size: 12px; cursor: pointer;
+  transition: background 0.15s, color 0.15s; text-decoration: none; font-family: inherit;
+}
+.btn-logout:hover { background: rgba(239,68,68,0.08); color: #f87171; border-color: rgba(239,68,68,0.3); }
+main { max-width: 1080px; margin: 0 auto; padding: 32px 24px; display: grid; gap: 24px; }
+.balance-card {
+  background: linear-gradient(135deg, #0c1a2e 0%, #0f2340 50%, #0c1a2e 100%);
+  border: 1px solid rgba(14,165,233,0.3);
+  border-radius: 16px; padding: 32px 36px;
+  display: flex; align-items: flex-start; justify-content: space-between;
+  position: relative; overflow: hidden;
+}
+.balance-card::before {
+  content: ""; position: absolute; top: -60px; right: -60px;
+  width: 200px; height: 200px;
+  background: radial-gradient(circle, rgba(14,165,233,0.12) 0%, transparent 70%);
+  pointer-events: none;
+}
+.balance-label { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: #7dd3fc; margin-bottom: 8px; }
+.balance-amount { font-size: 46px; font-weight: 700; color: #f0f6fc; font-family: "Courier New", monospace; letter-spacing: -1px; line-height: 1; margin-bottom: 16px; }
+.balance-amount .cur { font-size: 24px; color: #7dd3fc; vertical-align: super; margin-right: 4px; font-size: 20px; }
+.acct-info { display: flex; gap: 28px; }
+.acct-detail { display: flex; flex-direction: column; gap: 2px; }
+.acct-detail-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #4e6d8c; }
+.acct-detail-value { font-size: 12px; color: #93c5fd; font-family: "Courier New", monospace; }
+.balance-right { display: flex; flex-direction: column; align-items: flex-end; gap: 14px; z-index: 1; }
+.role-badge {
+  border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1px;
+}
+.role-badge.user  { background: rgba(14,165,233,0.15); color: #38bdf8; border: 1px solid rgba(14,165,233,0.3); }
+.role-badge.admin { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+.btn-transfer {
+  background: #0ea5e9; color: #fff; border: none; border-radius: 8px;
+  padding: 10px 22px; font-size: 13px; font-weight: 600; cursor: pointer;
+  text-decoration: none; display: inline-block; transition: background 0.15s, box-shadow 0.15s;
+}
+.btn-transfer:hover { background: #38bdf8; box-shadow: 0 0 18px rgba(14,165,233,0.35); }
+.quick-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 18px 20px; }
+.stat-card-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #8b949e; margin-bottom: 6px; }
+.stat-card-value { font-size: 22px; font-weight: 700; font-family: "Courier New", monospace; }
+.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.section-title { font-size: 15px; font-weight: 600; color: #f0f6fc; }
+.section-link { font-size: 12px; color: #0ea5e9; text-decoration: none; }
+.section-link:hover { text-decoration: underline; }
+.txn-table { background: #161b22; border: 1px solid #30363d; border-radius: 10px; overflow: hidden; }
+.txn-table table { width: 100%; border-collapse: collapse; }
+.txn-table thead th {
+  padding: 12px 16px; text-align: left; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 1px; color: #8b949e; border-bottom: 1px solid #30363d; font-weight: 500;
+}
+.txn-table tbody tr { border-bottom: 1px solid #21262d; transition: background 0.1s; }
+.txn-table tbody tr:last-child { border-bottom: none; }
+.txn-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+.txn-table td { padding: 13px 16px; font-size: 13px; vertical-align: middle; }
+.txn-id { font-family: "Courier New", monospace; font-size: 11px; color: #8b949e; }
+.txn-desc { color: #c9d1d9; font-weight: 500; }
+.txn-date { color: #8b949e; font-size: 12px; }
+.txn-amount { font-family: "Courier New", monospace; font-weight: 600; font-size: 14px; text-align: right; }
+.txn-amount.credit { color: #22c55e; }
+.txn-amount.debit  { color: #f87171; }
+.txn-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px;
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; font-family: "Courier New", monospace;
+}
+.txn-badge.credit { background: rgba(34,197,94,0.12); color: #4ade80; }
+.txn-badge.debit  { background: rgba(239,68,68,0.12); color: #fca5a5; }
+.admin-alert {
+  background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.2);
+  border-radius: 10px; padding: 14px 18px; display: flex; align-items: center; gap: 12px;
+  font-size: 13px; color: #fca5a5;
+}
+.admin-alert a { color: #f87171; font-weight: 600; text-decoration: none; }
+.admin-alert a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<nav>
+  <a class="brand" href="/dashboard">
+    <svg width="30" height="30" viewBox="0 0 36 36" fill="none">
+      <rect x="2" y="5" width="32" height="26" rx="4" fill="#0ea5e9" fill-opacity="0.1" stroke="#0ea5e9" stroke-width="1.5"/>
+      <circle cx="17" cy="18" r="8" stroke="#0ea5e9" stroke-width="1.5"/>
+      <circle cx="17" cy="18" r="2.5" fill="#0ea5e9"/>
+      <line x1="17" y1="10" x2="17" y2="12.5" stroke="#0ea5e9" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="25" y1="18" x2="22.5" y2="18" stroke="#0ea5e9" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="17" y1="26" x2="17" y2="23.5" stroke="#0ea5e9" stroke-width="1.5" stroke-linecap="round"/>
+      <line x1="9" y1="18" x2="11.5" y2="18" stroke="#0ea5e9" stroke-width="1.5" stroke-linecap="round"/>
+      <rect x="27" y="14" width="3.5" height="8" rx="1.75" fill="#0ea5e9" fill-opacity="0.5"/>
+    </svg>
+    <div class="brand-name">Vault<em>Bank</em></div>
+  </a>
+  <div class="nav-links">
+    <a class="nav-link active" href="/dashboard">Overview</a>
+    <a class="nav-link" href="/transfer">Transfer</a>
+    {% if data.role == 'admin' %}<a class="nav-link" href="/admin">Admin</a>{% endif %}
+  </div>
+  <div class="nav-right">
+    <div class="user-pill">
+      <div class="user-avatar">{{ user[0]|upper }}</div>
+      <div class="user-name">{{ data.name }}</div>
+    </div>
+    <a class="btn-logout" href="/logout">Sign out</a>
+  </div>
+</nav>
+
+<main>
+  {% if data.role == 'admin' %}
+  <div class="admin-alert">
+    <span>&#9888;</span>
+    Signed in as <strong>Administrator</strong>.
+    <a href="/admin">Go to Admin Panel &rarr;</a>
+  </div>
+  {% endif %}
+
+  <div class="balance-card">
+    <div>
+      <div class="balance-label">Available Balance</div>
+      <div class="balance-amount"><span class="cur">$</span>{{ "{:,.2f}".format(data.balance) }}</div>
+      <div class="acct-info">
+        <div class="acct-detail">
+          <div class="acct-detail-label">Account Number</div>
+          <div class="acct-detail-value">{{ data.acct }}</div>
+        </div>
+        <div class="acct-detail">
+          <div class="acct-detail-label">Account Type</div>
+          <div class="acct-detail-value">Premium Checking</div>
+        </div>
+        <div class="acct-detail">
+          <div class="acct-detail-label">Routing Number</div>
+          <div class="acct-detail-value">021000089</div>
+        </div>
+      </div>
+    </div>
+    <div class="balance-right">
+      <span class="role-badge {{ data.role }}">{{ data.role }}</span>
+      <a class="btn-transfer" href="/transfer">&#8594; Transfer Funds</a>
+    </div>
+  </div>
+
+  <div class="quick-stats">
+    <div class="stat-card">
+      <div class="stat-card-label">Month — Credits</div>
+      <div class="stat-card-value" style="color:#22c55e;">
+        +${% set ns = namespace(v=0.0) %}{% for t in transactions %}{% if t.type=='credit' %}{% set ns.v = ns.v + t.amount %}{% endif %}{% endfor %}{{ "{:,.2f}".format(ns.v) }}
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-label">Month — Debits</div>
+      <div class="stat-card-value" style="color:#ef4444;">
+        -${% set ns2 = namespace(v=0.0) %}{% for t in transactions %}{% if t.type=='debit' %}{% set ns2.v = ns2.v + t.amount|abs %}{% endif %}{% endfor %}{{ "{:,.2f}".format(ns2.v) }}
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-label">Transactions</div>
+      <div class="stat-card-value" style="color:#0ea5e9;">{{ transactions|length }}</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-header">
+      <div class="section-title">Recent Transactions</div>
+      <a class="section-link" href="#">View all &rarr;</a>
+    </div>
+    <div class="txn-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Reference</th>
+            <th>Description</th>
+            <th>Date</th>
+            <th>Type</th>
+            <th style="text-align:right;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in transactions %}
+          <tr>
+            <td><span class="txn-id">{{ t.id }}</span></td>
+            <td><span class="txn-desc">{{ t.desc }}</span></td>
+            <td><span class="txn-date">{{ t.date }}</span></td>
+            <td><span class="txn-badge {{ t.type }}">{{ t.type }}</span></td>
+            <td class="txn-amount {{ t.type }}">{% if t.type=='credit' %}+{% else %}-{% endif %}${{ "{:,.2f}".format(t.amount|abs) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</main>
+</body>
+</html>
