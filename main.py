@@ -69,8 +69,45 @@ from pipeline.rule_engine import Alert, RuleEngine
 # ---------------------------------------------------------------------------
 # Shared state: bridge between sync main thread and async dashboard loop
 # ---------------------------------------------------------------------------
-_dashboard_loop: Optional[asyncio.AbstractEventLoop] = None
-_dashboard_queue: Optional[asyncio.Queue] = None
+_dashboard_loop:      Optional[asyncio.AbstractEventLoop] = None
+_dashboard_queue:     Optional[asyncio.Queue] = None
+_dashboard_log_queue: Optional[asyncio.Queue] = None
+
+
+# ---------------------------------------------------------------------------
+# WebSocket log handler — streams every log record to the browser terminal
+# ---------------------------------------------------------------------------
+
+class WebSocketLogHandler(logging.Handler):
+    """
+    Forwards formatted log records into the dashboard's asyncio event loop
+    via call_soon_threadsafe + put_nowait, so it never blocks the caller.
+    """
+
+    _local = threading.local()  # guards against accidental re-entrant emit
+
+    def __init__(self, loop: asyncio.AbstractEventLoop, log_q: asyncio.Queue) -> None:
+        super().__init__()
+        self._loop = loop
+        self._log_q = log_q
+
+    def _put(self, line: str) -> None:
+        try:
+            self._log_q.put_nowait(line)
+        except asyncio.QueueFull:
+            pass
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if getattr(self._local, "active", False):
+            return
+        self._local.active = True
+        try:
+            line = self.format(record)
+            self._loop.call_soon_threadsafe(self._put, line)
+        except Exception:
+            pass
+        finally:
+            self._local.active = False
 
 
 def push_to_dashboard(alert: Alert) -> None:
@@ -168,12 +205,13 @@ def _print_banner() -> None:
 def _run_dashboard(
     loop: asyncio.AbstractEventLoop,
     alert_q: asyncio.Queue,
+    log_q: asyncio.Queue,
     aggregator: AlertAggregator,
 ) -> None:
     asyncio.set_event_loop(loop)
     try:
         from dashboard.api import app, set_pipeline
-        set_pipeline(aggregator, alert_q, running=True)
+        set_pipeline(aggregator, alert_q, log_q, running=True)
         import uvicorn
         config = uvicorn.Config(
             app,
@@ -192,13 +230,14 @@ def _run_dashboard(
 
 
 def _start_dashboard(aggregator: AlertAggregator) -> None:
-    global _dashboard_loop, _dashboard_queue
-    _dashboard_loop = asyncio.new_event_loop()
-    _dashboard_queue = asyncio.Queue(maxsize=500)
+    global _dashboard_loop, _dashboard_queue, _dashboard_log_queue
+    _dashboard_loop      = asyncio.new_event_loop()
+    _dashboard_queue     = asyncio.Queue(maxsize=500)
+    _dashboard_log_queue = asyncio.Queue(maxsize=1000)
 
     thread = threading.Thread(
         target=_run_dashboard,
-        args=(_dashboard_loop, _dashboard_queue, aggregator),
+        args=(_dashboard_loop, _dashboard_queue, _dashboard_log_queue, aggregator),
         daemon=True,
         name="dashboard",
     )
@@ -281,6 +320,14 @@ def run() -> None:
 
     # --- Dashboard ---
     _start_dashboard(aggregator)
+
+    # Attach WebSocket log handler so every log record streams to the browser terminal
+    ws_handler = WebSocketLogHandler(_dashboard_loop, _dashboard_log_queue)
+    ws_handler.setFormatter(logging.Formatter(
+        "[%(asctime)s] %(levelname)-8s %(name)s — %(message)s",
+        datefmt="%H:%M:%S",
+    ))
+    logging.getLogger().addHandler(ws_handler)
 
     print(
         Fore.GREEN + Style.BRIGHT

@@ -37,18 +37,29 @@ STATIC_DIR = Path(__file__).parent / "static"
 # ---------------------------------------------------------------------------
 _aggregator = None          # AlertAggregator instance
 _alert_queue: Optional[asyncio.Queue] = None
+_log_queue:   Optional[asyncio.Queue] = None
 _pipeline_running: bool = False
 
-# Per-client subscriber queues for WebSocket fan-out
+# Per-client subscriber queues for WebSocket fan-out (alerts)
 _subscribers: set[asyncio.Queue] = set()
 _subscribers_lock = asyncio.Lock()
 
+# Per-client subscriber queues for log terminal fan-out
+_log_subscribers: set[asyncio.Queue] = set()
+_log_subscribers_lock = asyncio.Lock()
 
-def set_pipeline(aggregator, alert_queue: asyncio.Queue, running: bool = True) -> None:
+
+def set_pipeline(
+    aggregator,
+    alert_queue: asyncio.Queue,
+    log_queue: Optional[asyncio.Queue] = None,
+    running: bool = True,
+) -> None:
     """Called by main.py to inject live pipeline state into the API."""
-    global _aggregator, _alert_queue, _pipeline_running
+    global _aggregator, _alert_queue, _log_queue, _pipeline_running
     _aggregator = aggregator
     _alert_queue = alert_queue
+    _log_queue = log_queue
     _pipeline_running = running
     log.info("Dashboard pipeline state configured (running=%s)", running)
 
@@ -59,7 +70,8 @@ def set_pipeline(aggregator, alert_queue: asyncio.Queue, running: bool = True) -
 
 @asynccontextmanager
 async def _lifespan(application: FastAPI):
-    asyncio.create_task(_broadcast_task(), name="alert-broadcaster")
+    asyncio.create_task(_broadcast_task(),     name="alert-broadcaster")
+    asyncio.create_task(_log_broadcast_task(), name="log-broadcaster")
     yield
 
 
@@ -98,6 +110,32 @@ async def _broadcast_task() -> None:
                 except Exception:
                     dead.add(q)
             _subscribers.difference_update(dead)
+
+
+async def _log_broadcast_task() -> None:
+    """Drain _log_queue and fan-out each log line to all terminal WebSocket subscribers."""
+    while True:
+        if _log_queue is None:
+            await asyncio.sleep(0.1)
+            continue
+        try:
+            line = await asyncio.wait_for(_log_queue.get(), timeout=0.5)
+        except asyncio.TimeoutError:
+            continue
+        except Exception as exc:
+            log.warning("Log broadcast task error: %s", exc)
+            continue
+
+        async with _log_subscribers_lock:
+            dead = set()
+            for q in _log_subscribers:
+                try:
+                    q.put_nowait(line)
+                except asyncio.QueueFull:
+                    pass
+                except Exception:
+                    dead.add(q)
+            _log_subscribers.difference_update(dead)
 
 
 # ---------------------------------------------------------------------------
@@ -196,11 +234,14 @@ async def simulate_attack() -> JSONResponse:
         exist_ok=True,
     )
     try:
-        with open(SNORT_ALERT_PATH, "a", encoding="utf-8") as f:
-            for event in attack_events:
+        for i, event in enumerate(attack_events):
+            with open(SNORT_ALERT_PATH, "a", encoding="utf-8") as f:
                 f.write(json.dumps(event) + "\n")
-            f.flush()
-        log.info("Simulated attack: wrote %d events to %s", len(attack_events), SNORT_ALERT_PATH)
+                f.flush()
+            log.info("Simulated event %d/%d: %s", i + 1, len(attack_events), event["msg"])
+            if i < len(attack_events) - 1:
+                await asyncio.sleep(2)
+        log.info("Simulated attack complete: %d events written to %s", len(attack_events), SNORT_ALERT_PATH)
         return JSONResponse({"status": "attack sequence triggered", "count": len(attack_events)})
     except OSError as exc:
         log.error("Failed to write simulate events: %s", exc)
@@ -244,6 +285,30 @@ async def ws_alerts(websocket: WebSocket) -> None:
             _subscribers.discard(client_queue)
 
 
+@app.websocket("/ws/logs")
+async def ws_logs(websocket: WebSocket) -> None:
+    await websocket.accept()
+
+    client_queue: asyncio.Queue = asyncio.Queue(maxsize=200)
+    async with _log_subscribers_lock:
+        _log_subscribers.add(client_queue)
+
+    try:
+        while True:
+            try:
+                line = await asyncio.wait_for(client_queue.get(), timeout=15.0)
+                await websocket.send_text(line)
+            except asyncio.TimeoutError:
+                await websocket.send_text("__ping__")
+    except WebSocketDisconnect:
+        log.debug("Log WebSocket client disconnected")
+    except Exception as exc:
+        log.debug("Log WebSocket error: %s", exc)
+    finally:
+        async with _log_subscribers_lock:
+            _log_subscribers.discard(client_queue)
+
+
 # ---------------------------------------------------------------------------
 # Self-test
 # ---------------------------------------------------------------------------
@@ -268,7 +333,7 @@ if __name__ == "__main__":
         "top_attacking_ips": [],
     }
 
-    set_pipeline(mock_agg, asyncio.Queue(), running=True)
+    set_pipeline(mock_agg, asyncio.Queue(), asyncio.Queue(), running=True)
 
     client = TestClient(app)
 

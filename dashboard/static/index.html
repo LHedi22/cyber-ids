@@ -452,6 +452,81 @@ td {
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* ── Two-column main grid ───────────────────────────────── */
+.main-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  height: calc(100vh - 120px);
+  overflow: hidden;
+}
+
+.left-col {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Let flex control height instead of the old fixed max-height */
+.left-col .table-wrap {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.left-col .detail-panel { flex-shrink: 0; }
+.left-col .action-bar   { flex-shrink: 0; }
+
+/* ── Pipeline terminal panel ────────────────────────────── */
+.terminal-panel {
+  background: #000000;
+  border: 1px solid #1a2e1a;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+}
+
+.terminal-hdr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  background: #060f06;
+  border-bottom: 1px solid #1a2e1a;
+  color: #00ff41;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.term-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.5px;
+  opacity: 0.5;
+  transition: opacity 0.3s;
+}
+
+.term-badge.online { opacity: 1; }
+
+.terminal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 14px;
+  line-height: 1.55;
+  word-break: break-all;
+}
+
+.log-line { white-space: pre-wrap; margin: 0; }
+.log-ts   { color: #00ff41; opacity: 0.35; }
+
 /* ── Scrollbar ──────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -496,6 +571,9 @@ td {
   </div>
 </div>
 
+<div class="main-grid">
+<div class="left-col">
+
 <!-- Alert table -->
 <div class="table-wrap">
   <table>
@@ -539,7 +617,20 @@ td {
   <button class="btn btn-simulate" id="btnSimulate">&#128640; Simulate Attack</button>
   <button class="btn btn-clear" id="btnClear">&#128465; Clear</button>
   <span class="action-status" id="actionStatus">&nbsp;</span>
+</div><!-- /.action-bar -->
+
+</div><!-- /.left-col -->
+
+<!-- Terminal panel (right column) -->
+<div class="terminal-panel">
+  <div class="terminal-hdr">
+    <span>&#11044;</span> Live Pipeline
+    <span class="term-badge" id="termBadge">&#9675; connecting&hellip;</span>
+  </div>
+  <div class="terminal-body" id="termBody"></div>
 </div>
+
+</div><!-- /.main-grid -->
 
 <!-- WS footer -->
 <div class="ws-bar">
@@ -937,10 +1028,97 @@ td {
     setActionStatus('Display cleared');
   });
 
+  /* ── Pipeline log terminal ──────────────────── */
+  const MAX_LOG_LINES = 200;
+  let termPinned  = true;
+  let logWs       = null;
+  let logWsDelay  = 1000;
+
+  function logColor(line) {
+    if (/\] ERROR   |\] CRITICAL/.test(line)) return '#ef4444';
+    if (/\] WARNING /.test(line) && line.includes('ALERT')) return '#ef4444';
+    if (/\] WARNING /.test(line)) return '#fbbf24';
+    if (/\] DEBUG   /.test(line)) return '#4b5563';
+    return '#00ff41';
+  }
+
+  function addLogLine(text) {
+    if (!text || text === '__ping__') return;
+    const body = document.getElementById('termBody');
+    const el   = document.createElement('div');
+    el.className = 'log-line';
+
+    // Split [HH:MM:SS] timestamp from the rest
+    const m = text.match(/^(\[\d{2}:\d{2}:\d{2}\])([\s\S]*)/);
+    if (m) {
+      const ts = document.createElement('span');
+      ts.className  = 'log-ts';
+      ts.textContent = m[1];
+      const rest = document.createElement('span');
+      rest.style.color = logColor(text);
+      rest.textContent = m[2];
+      el.appendChild(ts);
+      el.appendChild(rest);
+    } else {
+      el.style.color  = logColor(text);
+      el.textContent  = text;
+    }
+
+    body.appendChild(el);
+
+    // Evict oldest lines beyond limit
+    while (body.children.length > MAX_LOG_LINES) {
+      body.removeChild(body.firstChild);
+    }
+
+    if (termPinned) body.scrollTop = body.scrollHeight;
+  }
+
+  function setTermBadge(online) {
+    const b = document.getElementById('termBadge');
+    if (!b) return;
+    if (online) {
+      b.textContent = '● live';
+      b.classList.add('online');
+    } else {
+      b.textContent = '○ reconnecting…';
+      b.classList.remove('online');
+    }
+  }
+
+  function connectLogs() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    logWs = new WebSocket(proto + '://' + location.host + '/ws/logs');
+
+    logWs.addEventListener('open', () => {
+      logWsDelay = 1000;
+      setTermBadge(true);
+    });
+
+    logWs.addEventListener('message', (evt) => {
+      addLogLine(evt.data);
+    });
+
+    logWs.addEventListener('close', () => {
+      setTermBadge(false);
+      const delay = logWsDelay;
+      logWsDelay = Math.min(logWsDelay * 2, 30000);
+      setTimeout(connectLogs, delay);
+    });
+
+    logWs.addEventListener('error', () => logWs.close());
+  }
+
+  // Unpin auto-scroll when user manually scrolls up
+  document.getElementById('termBody').addEventListener('scroll', function () {
+    termPinned = this.scrollTop + this.clientHeight >= this.scrollHeight - 24;
+  });
+
   /* ── Boot ───────────────────────────────────── */
   async function boot() {
     await Promise.all([fetchHealth(), loadAlerts(), fetchStats()]);
     connect();
+    connectLogs();
     setInterval(fetchStats,  10000);
     setInterval(fetchHealth,  5000);
   }
