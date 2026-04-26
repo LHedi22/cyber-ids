@@ -120,11 +120,17 @@ def _print_alert_line(alert: Alert) -> None:
     ts = alert.timestamp.strftime("%H:%M:%S")
     color = _alert_severity_color(alert.severity)
     explanation = alert.llm_explanation[:80] if alert.llm_explanation else alert.rule_name
-    print(
-        f"{color}[{ts}] \U0001f6a8 {alert.severity:<8} {alert.type:<20} "
+    line = (
+        f"{color}[{ts}] [ALERT] {alert.severity:<8} {alert.type:<20} "
         f"{alert.src_ip:<15} \"{explanation}\""
         f"{Style.RESET_ALL}"
     )
+    try:
+        print(line)
+    except UnicodeEncodeError:
+        # Windows cp1252 console fallback — strip ANSI codes
+        import re
+        print(re.sub(r'\x1b\[[0-9;]*m', '', line).encode('ascii', errors='replace').decode('ascii'))
 
 
 def _write_alert_atomic(alert: Alert) -> None:

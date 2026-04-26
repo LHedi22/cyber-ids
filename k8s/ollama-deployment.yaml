@@ -1,0 +1,89 @@
+# Apply with: kubectl apply -f k8s/
+# Namespace: cyber-ids
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: cyber-ids
+  labels:
+    app: ollama
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      # Init container polls until ollama serve is accepting connections,
+      # then pulls phi3:mini into the shared PVC. On subsequent pod starts
+      # the model is already cached so the pull is near-instant.
+      initContainers:
+        - name: pull-phi3-mini
+          image: curlimages/curl:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Sleeping 30s for ollama serve to start..."
+              sleep 30
+              until curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; do
+                echo "Ollama not ready, retrying in 5s..."
+                sleep 5
+              done
+              echo "Pulling phi3:mini (may take several minutes on first run)..."
+              curl -X POST http://localhost:11434/api/pull \
+                -H "Content-Type: application/json" \
+                -d '{"name":"phi3:mini"}'
+              echo "Done."
+          volumeMounts:
+            - name: ollama-data
+              mountPath: /root/.ollama
+      containers:
+        - name: ollama
+          image: ollama/ollama:latest
+          ports:
+            - containerPort: 11434
+          volumeMounts:
+            - name: ollama-data
+              mountPath: /root/.ollama
+          livenessProbe:
+            httpGet:
+              path: /api/tags
+              port: 11434
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /api/tags
+              port: 11434
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+      volumes:
+        - name: ollama-data
+          persistentVolumeClaim:
+            claimName: ollama-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-service
+  namespace: cyber-ids
+spec:
+  selector:
+    app: ollama
+  ports:
+    - protocol: TCP
+      port: 11434
+      targetPort: 11434
+  type: ClusterIP

@@ -1,0 +1,40 @@
+# Apply with: kubectl apply -f k8s/
+# Namespace: cyber-ids
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simulator
+  namespace: cyber-ids
+  labels:
+    app: simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simulator
+  template:
+    metadata:
+      labels:
+        app: simulator
+    spec:
+      containers:
+        - name: simulator
+          image: cyber-ids-simulator:latest
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef:
+                name: cyber-ids-config
+          volumeMounts:
+            - name: shared-data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+      volumes:
+        - name: shared-data
+          persistentVolumeClaim:
+            claimName: shared-data-pvc

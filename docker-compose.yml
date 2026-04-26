@@ -1,0 +1,77 @@
+version: "3.9"
+
+networks:
+  ids-net:
+    driver: bridge
+
+volumes:
+  shared_data:
+  alerts_data:
+  ollama_data:
+
+services:
+  simulator:
+    build:
+      context: .
+      dockerfile: Dockerfile.simulator
+    volumes:
+      - shared_data:/data
+    env_file: .env
+    networks:
+      - ids-net
+    restart: unless-stopped
+
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile.pipeline
+    volumes:
+      - shared_data:/data
+      - alerts_data:/data/alerts
+    env_file: .env
+    ports:
+      - "8000:8000"
+    networks:
+      - ids-net
+    depends_on:
+      simulator:
+        condition: service_started
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  target-app:
+    build:
+      context: ./target-app
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    networks:
+      - ids-net
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - ids-net
+    entrypoint:
+      - /bin/sh
+      - -c
+      - "ollama serve & sleep 5 && ollama pull phi3:mini && wait"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped

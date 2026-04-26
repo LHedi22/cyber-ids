@@ -1,0 +1,32 @@
+# Apply with: kubectl apply -f k8s/
+# Namespace: cyber-ids
+# Prerequisites:
+#   minikube addons enable ingress
+#   echo "$(minikube ip) cyber-ids.local" | sudo tee -a /etc/hosts
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cyber-ids-ingress
+  namespace: cyber-ids
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: cyber-ids.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dashboard-service
+                port:
+                  number: 8000
+          - path: /app
+            pathType: Prefix
+            backend:
+              service:
+                name: target-app-service
+                port:
+                  number: 5000

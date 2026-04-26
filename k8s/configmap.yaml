@@ -1,0 +1,22 @@
+# Apply with: kubectl apply -f k8s/
+# Namespace: cyber-ids
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cyber-ids-config
+  namespace: cyber-ids
+data:
+  OLLAMA_HOST: "http://ollama-service:11434"
+  OLLAMA_MODEL: "phi3:mini"
+  ALERT_LOG_PATH: "/data/alerts.jsonl"
+  SNORT_ALERT_PATH: "/data/snort_alerts.jsonl"
+  ISOLATION_FOREST_CONTAMINATION: "0.05"
+  MODEL_PATH: "models/isolation_forest.pkl"
+  SLIDING_WINDOW_SECONDS: "60"
+  BRUTE_FORCE_THRESHOLD: "5"
+  PORT_SCAN_THRESHOLD: "20"
+  DATA_EXFIL_BYTES: "10000"
+  ALERT_DEDUP_SECONDS: "30"
+  DASHBOARD_PORT: "8000"
+  LOG_LEVEL: "INFO"
+  DEMO_MODE: "true"

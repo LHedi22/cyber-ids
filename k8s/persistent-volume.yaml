@@ -1,0 +1,85 @@
+# Apply with: kubectl apply -f k8s/
+# Namespace: cyber-ids
+
+# ── shared-data: simulator writes snort_alerts.jsonl, pipeline reads it ───────
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: shared-data-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: /tmp/cyber-ids/shared
+  persistentVolumeReclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shared-data-pvc
+  namespace: cyber-ids
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: shared-data-pv
+
+---
+# ── alerts-data: pipeline writes processed alerts.jsonl, dashboard reads it ───
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: alerts-data-pv
+spec:
+  capacity:
+    storage: 512Mi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: /tmp/cyber-ids/alerts
+  persistentVolumeReclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: alerts-data-pvc
+  namespace: cyber-ids
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 512Mi
+  volumeName: alerts-data-pv
+
+---
+# ── ollama-data: model weights cache (survives pod restarts) ─────────────────
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: ollama-data-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /tmp/cyber-ids/ollama
+  persistentVolumeReclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-data-pvc
+  namespace: cyber-ids
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: ollama-data-pv

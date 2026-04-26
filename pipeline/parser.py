@@ -103,14 +103,23 @@ class LogTailer:
     def stop(self) -> None:
         self._stop.set()
 
-    def _open_file(self):
-        """Block until the file exists, then open it and seek to EOF."""
+    def _open_file(self, seek_to_end: bool = True):
+        """Block until the file exists, then open it.
+
+        seek_to_end=True  → seek to EOF (normal startup; don't replay history).
+        seek_to_end=False → seek to start (file appeared while we were waiting;
+                            all content is new and must be processed).
+        """
+        file_existed = os.path.exists(self.path)
         while not self._stop.is_set():
             if os.path.exists(self.path):
                 try:
                     f = open(self.path, "r", encoding="utf-8")
-                    f.seek(0, 2)  # seek to end
-                    log.info("Tailing %s from EOF (offset=%d)", self.path, f.tell())
+                    if seek_to_end and file_existed:
+                        f.seek(0, 2)  # skip history
+                        log.info("Tailing %s from EOF (offset=%d)", self.path, f.tell())
+                    else:
+                        log.info("Tailing %s from start (new file)", self.path)
                     return f
                 except OSError as exc:
                     log.warning("Could not open %s: %s — retrying", self.path, exc)
@@ -141,7 +150,7 @@ class LogTailer:
                 if not os.path.exists(self.path):
                     log.warning("File %s disappeared, waiting for rotation...", self.path)
                     f.close()
-                    f = self._open_file()
+                    f = self._open_file(seek_to_end=False)  # rotation = new file, read from start
                     if f is None:
                         break
                     continue

@@ -1,0 +1,67 @@
+# CyberIDS custom Snort 3 rules
+# 5 rules covering the attack scenarios in CLAUDE.md.
+# SIDs 1000001–1000005 match the simulator and pipeline/rule_engine.py exactly.
+
+# ---------------------------------------------------------------------------
+# SID 1000001 — SSH Brute Force
+# Fires when a single source IP sends > 5 TCP SYNs to port 22 within 60 s.
+# detection_filter is stateful: Snort tracks the per-src count internally.
+# ---------------------------------------------------------------------------
+alert tcp any any -> $HOME_NET 22 \
+( \
+    msg:"SSH Brute Force Attempt"; \
+    flow:to_server; \
+    detection_filter:track by_src, count 5, seconds 60; \
+    sid:1000001; gid:1; rev:1; priority:1; \
+)
+
+# ---------------------------------------------------------------------------
+# SID 1000002 — SQL Injection in HTTP URI
+# Looks for the classic  ' OR  sequence (case-insensitive) in the HTTP URI.
+# Targets port 80/443 on the internal network (VaultBank login endpoint).
+# ---------------------------------------------------------------------------
+alert http any any -> $HOME_NET any \
+( \
+    msg:"SQL Injection Attempt Detected"; \
+    http_uri; content:"' OR "; nocase; \
+    sid:1000002; gid:1; rev:1; priority:2; \
+)
+
+# ---------------------------------------------------------------------------
+# SID 1000003 — Horizontal Port Scan
+# Fires when a single source sends > 20 SYN packets within 10 s,
+# indicating automated port discovery against the home network.
+# ---------------------------------------------------------------------------
+alert tcp any any -> $HOME_NET any \
+( \
+    msg:"Port Scan Detected"; \
+    flags:S; \
+    detection_filter:track by_src, count 20, seconds 10; \
+    sid:1000003; gid:1; rev:1; priority:2; \
+)
+
+# ---------------------------------------------------------------------------
+# SID 1000004 — Off-Hours SSH Access
+# Matches any established inbound SSH session.
+# The Python rule engine (rule_engine.py) applies the time-of-day check
+# using the is_off_hours feature; Snort fires on the connection itself.
+# ---------------------------------------------------------------------------
+alert tcp any any -> $HOME_NET 22 \
+( \
+    msg:"Off-Hours Successful Login"; \
+    flow:to_server,established; \
+    sid:1000004; gid:1; rev:1; priority:3; \
+)
+
+# ---------------------------------------------------------------------------
+# SID 1000005 — Large Outbound Transfer (Potential Data Exfiltration)
+# Triggers on TCP segments > 8000 bytes leaving the home network to
+# any external destination — consistent with bulk data exfil behaviour.
+# ---------------------------------------------------------------------------
+alert tcp $HOME_NET any -> $EXTERNAL_NET any \
+( \
+    msg:"Possible Data Exfiltration"; \
+    flow:to_server; \
+    dsize:>8000; \
+    sid:1000005; gid:1; rev:1; priority:2; \
+)

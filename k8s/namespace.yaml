@@ -1,0 +1,8 @@
+# Apply with: kubectl apply -f k8s/
+# Namespace: cyber-ids
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cyber-ids
+  labels:
+    app.kubernetes.io/part-of: cyber-ids

@@ -12,7 +12,15 @@
       "Bash(wsl python3 *)",
       "Bash(wsl which *)",
       "Bash(wsl *)",
-      "Bash(wsl.exe *)"
+      "Bash(wsl.exe *)",
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(net stop *)",
+      "Bash(net start *)",
+      "Bash(Get-Process \"Docker Desktop\" -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object Name, CPU, WorkingSet)",
+      "Bash(docker info *)",
+      "Bash(wmic logicaldisk *)"
     ]
   }
 }
