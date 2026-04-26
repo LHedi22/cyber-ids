@@ -30,7 +30,8 @@ SLIDING_WINDOW_SECONDS = int(os.getenv("SLIDING_WINDOW_SECONDS", "60"))
 SHORT_WINDOW_SECONDS = 10  # fixed window for port-scan detection
 
 # SIDs treated as "failed" authentication events
-FAILED_AUTH_SIDS = {1000001, 1000004}
+# SID 1000004 is "Off-Hours Successful Login" — a valid credential, NOT a failure
+FAILED_AUTH_SIDS = {1000001}
 
 # Document the full feature contract in one place
 FEATURE_KEYS = (
@@ -57,8 +58,8 @@ def _is_failed_event(event: LogEvent) -> bool:
     """Heuristic: classify an event as a failed/suspicious authentication attempt."""
     if event.sid in FAILED_AUTH_SIDS:
         return True
-    # Failed SSH: port 22, high priority (priority 1 = most severe in Snort)
-    if event.dst_port == 22 and event.priority > 1:
+    # Failed SSH: port 22, highest Snort priority (1 = most severe = typical failed auth)
+    if event.dst_port == 22 and event.priority == 1:
         return True
     return False
 

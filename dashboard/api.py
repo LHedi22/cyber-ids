@@ -193,38 +193,22 @@ async def health() -> JSONResponse:
 @app.post("/api/simulate")
 async def simulate_attack() -> JSONResponse:
     """
-    Write one event for each of the 5 attack SIDs directly to SNORT_ALERT_PATH.
-    The LogTailer picks them up and feeds them through the pipeline automatically.
-    """
-    ts = datetime.now(timezone.utc).strftime("%Y/%m/%d-%H:%M:%S.%f")
+    Write multi-event attack bursts to SNORT_ALERT_PATH so sliding-window features
+    accumulate to anomalous levels — triggering both rule-based and ML detection.
 
-    attack_events = [
-        # SSH Brute Force
-        {"timestamp": ts, "src_addr": "10.99.0.1", "dst_addr": "192.168.1.5",
-         "src_port": 54001, "dst_port": 22, "proto": "TCP", "sid": 1000001,
-         "gid": 1, "rev": 1, "msg": "SSH Brute Force Attempt", "priority": 1,
-         "bytes": 512, "action": "alert"},
-        # SQL Injection
-        {"timestamp": ts, "src_addr": "10.99.0.2", "dst_addr": "192.168.1.5",
-         "src_port": 54002, "dst_port": 80, "proto": "TCP", "sid": 1000002,
-         "gid": 1, "rev": 1, "msg": "SQL Injection Attempt Detected", "priority": 2,
-         "bytes": 1024, "action": "alert"},
-        # Port Scan
-        {"timestamp": ts, "src_addr": "10.99.0.3", "dst_addr": "192.168.1.5",
-         "src_port": 54003, "dst_port": 443, "proto": "TCP", "sid": 1000003,
-         "gid": 1, "rev": 1, "msg": "Port Scan Detected", "priority": 2,
-         "bytes": 64, "action": "alert"},
-        # Off-Hours Access
-        {"timestamp": ts, "src_addr": "10.99.0.4", "dst_addr": "192.168.1.5",
-         "src_port": 54004, "dst_port": 22, "proto": "TCP", "sid": 1000004,
-         "gid": 1, "rev": 1, "msg": "Off-Hours Successful Login", "priority": 3,
-         "bytes": 400, "action": "alert"},
-        # Data Exfiltration
-        {"timestamp": ts, "src_addr": "10.99.0.5", "dst_addr": "203.0.113.99",
-         "src_port": 54005, "dst_port": 4444, "proto": "TCP", "sid": 1000005,
-         "gid": 1, "rev": 1, "msg": "Possible Data Exfiltration", "priority": 2,
-         "bytes": 50000, "action": "alert"},
-    ]
+    Each scenario uses a dedicated attacker IP so dedup/merge logic is exercised
+    independently per scenario.
+    """
+    def _ev(src: str, dst: str, sport: int, dport: int, proto: str,
+            sid: int, msg: str, pri: int, bytes_: int,
+            ts: "datetime | None" = None) -> dict:
+        t = (ts or datetime.now(timezone.utc)).strftime("%Y/%m/%d-%H:%M:%S.%f")
+        return {
+            "timestamp": t, "src_addr": src, "dst_addr": dst,
+            "src_port": sport, "dst_port": dport, "proto": proto,
+            "sid": sid, "gid": 1, "rev": 1, "msg": msg,
+            "priority": pri, "bytes": bytes_, "action": "alert",
+        }
 
     if _aggregator is not None:
         _aggregator.clear()
@@ -233,19 +217,79 @@ async def simulate_attack() -> JSONResponse:
         os.path.dirname(SNORT_ALERT_PATH) if os.path.dirname(SNORT_ALERT_PATH) else ".",
         exist_ok=True,
     )
+
+    # Force a known off-hours timestamp (03:00 UTC) so the rule always fires
+    # regardless of when the demo is run.
+    off_hours_ts = datetime.now(timezone.utc).replace(hour=3, minute=0, second=0, microsecond=0)
+
+    # Each tuple: (label, events_factory, delay_between_events_seconds)
+    # Events are created lazily inside the loop so timestamps are fresh per event.
+    scenarios: list[tuple[str, list, float]] = [
+        # 1. SSH Brute Force — 25 events: failed_logins_60s=25, error_rate=1.0
+        #    Rule fires at event 6 (>5 threshold); ML fires on extreme outliers
+        (
+            "SSH Brute Force",
+            [_ev("10.99.0.1", "192.168.1.5", 54001, 22, "TCP",
+                 1000001, "SSH Brute Force Attempt", 1, 512)
+             for _ in range(25)],
+            0.05,
+        ),
+        # 2. Port Scan — 25 events to 25 distinct ports: unique_ports_10s=25
+        #    Rule fires at event 21 (>20 threshold); ML fires on extreme unique_ports
+        (
+            "Port Scan",
+            [_ev("10.99.0.3", "192.168.1.5", 54003, port, "TCP",
+                 1000003, "Port Scan Detected", 2, 64)
+             for port in range(1, 26)],
+            0.02,
+        ),
+        # 3. SQL Injection — 3 events; rule fires on SID match (first event)
+        (
+            "SQL Injection",
+            [_ev("10.99.0.2", "192.168.1.5", 54002, 80, "TCP",
+                 1000002, "SQL Injection Attempt Detected", 2, 1024)
+             for _ in range(3)],
+            0.3,
+        ),
+        # 4. Off-Hours Access — 3 events with forced 03:00 UTC timestamp
+        #    error_rate=0.0 (SID 1000004 is a successful login, not a failure)
+        #    Rule fires when is_off_hours=1 AND error_rate < 0.5
+        (
+            "Off-Hours Access",
+            [_ev("10.99.0.4", "192.168.1.5", 54004, 22, "TCP",
+                 1000004, "Off-Hours Successful Login", 3, 400, off_hours_ts)
+             for _ in range(3)],
+            0.2,
+        ),
+        # 5. Data Exfiltration — 3 x 50 KB chunks: bytes_out_60s=150 000
+        #    Rule fires at event 1 (50000 > threshold, port 4444 non-standard)
+        #    ML fires on extreme bytes_out_60s (30× training max)
+        (
+            "Data Exfiltration",
+            [_ev("10.99.0.5", "203.0.113.99", 54005, 4444, "TCP",
+                 1000005, "Possible Data Exfiltration", 2, 50000)
+             for _ in range(3)],
+            0.3,
+        ),
+    ]
+
+    total = 0
     try:
-        for i, event in enumerate(attack_events):
-            with open(SNORT_ALERT_PATH, "a", encoding="utf-8") as f:
-                f.write(json.dumps(event) + "\n")
-                f.flush()
-            log.info("Simulated event %d/%d: %s", i + 1, len(attack_events), event["msg"])
-            if i < len(attack_events) - 1:
-                await asyncio.sleep(2)
-        log.info("Simulated attack complete: %d events written to %s", len(attack_events), SNORT_ALERT_PATH)
-        return JSONResponse({"status": "attack sequence triggered", "count": len(attack_events)})
+        for label, events, delay in scenarios:
+            log.info("Simulate: starting %s (%d events)", label, len(events))
+            for event in events:
+                with open(SNORT_ALERT_PATH, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(event) + "\n")
+                    f.flush()
+                total += 1
+                await asyncio.sleep(delay)
+            await asyncio.sleep(0.5)  # brief inter-scenario gap
     except OSError as exc:
         log.error("Failed to write simulate events: %s", exc)
         return JSONResponse({"status": "error", "detail": str(exc)}, status_code=500)
+
+    log.info("Simulated attack complete: %d events written to %s", total, SNORT_ALERT_PATH)
+    return JSONResponse({"status": "attack sequence triggered", "count": total})
 
 
 # ---------------------------------------------------------------------------
