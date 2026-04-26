@@ -57,17 +57,18 @@ def _build_prompt(alert: "Alert") -> str:
         ts_str = str(ts)
 
     return (
-        "You are a cybersecurity analyst. A network anomaly was detected.\n\n"
-        "Event details:\n"
+        "You are a senior cybersecurity analyst writing incident triage notes.\n\n"
+        "Alert details:\n"
         f"- Source IP: {alert.src_ip}\n"
         f"- Attack type: {alert.type}\n"
         f"- Severity: {alert.severity}\n"
         f"- Timestamp: {ts_str}\n"
         f"- Detection method: {alert.detection_source}\n"
         f"- Top indicators:\n{indicators}\n\n"
-        "In exactly 1-2 sentences, describe what attack this likely represents "
-        "and what the attacker may be attempting. Be specific and technical. "
-        "Do not use hedging language like \"possibly\" or \"might\"."
+        "Write 2-3 sentences: (1) what attack this represents and the attacker's "
+        "likely objective, (2) what specific evidence supports this conclusion. "
+        "Be precise and technical. Do not use hedging language like \"possibly\" or \"might\". "
+        "Write in present tense as if actively observing the threat."
     )
 
 
@@ -163,53 +164,140 @@ class LLMInterpreter:
 
     @staticmethod
     def _fallback(alert: "Alert") -> str:
-        """Build a meaningful explanation from SHAP factors and features when Ollama is down."""
-        fv = alert.feature_vector or {}
+        """Per-attack-type narrative explanations used when Ollama is unavailable."""
+        fv       = alert.feature_vector or {}
+        src      = alert.src_ip
+        dst_host = f"{alert.dst_ip}:{alert.dst_port}" if alert.dst_ip else "target host"
+        atype    = alert.type
 
-        # SHAP factors are the richest signal — use them if present
+        failed   = int(fv.get("failed_logins_60s", 0))
+        ports    = int(fv.get("unique_ports_10s", 0))
+        bytes_out = int(fv.get("bytes_out_60s", 0))
+        error_r  = fv.get("error_rate", 0.0)
+        reqs_min = int(fv.get("requests_per_min", 0))
+        is_new   = bool(fv.get("is_new_ip", 0))
+        off_hrs  = bool(fv.get("is_off_hours", 0))
+
+        if atype == "BRUTE_FORCE":
+            rate_note = f" with a {error_r:.0%} failure rate" if error_r > 0 else ""
+            return (
+                f"Automated credential attack is underway from {src}: {failed} failed "
+                f"authentication attempts were recorded in a 60-second window{rate_note}, "
+                f"consistent with a dictionary or credential-stuffing campaign targeting "
+                f"SSH or web authentication services. "
+                f"The high-frequency, systematic pattern is characteristic of tooling "
+                f"such as Hydra or Medusa rather than organic user error. "
+                f"Immediate account lockout and IP block are recommended."
+            )
+
+        if atype == "PORT_SCAN":
+            return (
+                f"Active network reconnaissance is in progress from {src}: {ports} "
+                f"distinct destination ports were probed within a 10-second interval, "
+                f"a pattern that matches automated port scanning tools such as Nmap or Masscan. "
+                f"The attacker is systematically enumerating exposed services to identify "
+                f"exploitable entry points — this is typically a precursor to a targeted "
+                f"exploitation phase. The scan rate indicates the attacker is not attempting "
+                f"to evade detection."
+            )
+
+        if atype == "SQL_INJECTION":
+            return (
+                f"SQL injection attack is being executed from {src} against the "
+                f"web application endpoint at {dst_host}. "
+                f"The attacker is submitting crafted input payloads designed to break "
+                f"out of the intended query context and manipulate the backend database "
+                f"directly. The objective is typically authentication bypass, "
+                f"bulk credential or PII extraction, or escalation to remote code "
+                f"execution via database features such as xp_cmdshell."
+            )
+
+        if atype == "DATA_EXFIL":
+            if bytes_out >= 1_048_576:
+                size_str = f"{bytes_out / 1_048_576:.1f} MB"
+            elif bytes_out >= 1024:
+                size_str = f"{bytes_out / 1024:.0f} KB"
+            else:
+                size_str = f"{bytes_out:,} bytes"
+            new_note = " to a previously unseen external host" if is_new else ""
+            return (
+                f"Data exfiltration is actively occurring from {src}: {size_str} "
+                f"of outbound traffic was recorded to {dst_host}{new_note} "
+                f"over a non-standard port within a 60-second window. "
+                f"This volume and destination pattern is consistent with an attacker "
+                f"staging and exporting sensitive data — likely credentials, "
+                f"intellectual property, or customer records — to an external command "
+                f"and control server. Network egress to this destination should be "
+                f"blocked immediately."
+            )
+
+        if atype == "OFF_HOURS_ACCESS":
+            err_note = (
+                f" The {error_r:.0%} error rate confirms the credentials are valid, "
+                f"ruling out a brute-force attack in progress."
+                if error_r < 0.3 else ""
+            )
+            return (
+                f"Suspicious authentication was recorded from {src} during off-hours "
+                f"when legitimate user activity is not expected.{err_note} "
+                f"This pattern is associated with insider threats or compromised "
+                f"credentials being used by an external actor who has already obtained "
+                f"valid account access — potentially through phishing, credential "
+                f"reuse, or a prior intrusion. Verify with the account owner immediately."
+            )
+
+        # ML_ANOMALY — use SHAP factors for specificity if available
         if alert.shap_factors:
             top = sorted(
                 alert.shap_factors,
                 key=lambda f: abs(f.get("shap_contribution", 0)),
                 reverse=True,
-            )[:2]
-            parts = []
+            )[:3]
+            feat_parts = []
             for f in top:
                 name = f.get("feature", "").replace("_", " ")
                 val  = f.get("value", "")
-                parts.append(f"{name} = {val}")
-            factors_str = "; ".join(parts)
+                contrib = f.get("shap_contribution", 0)
+                feat_parts.append(f"{name} = {val} (SHAP {contrib:+.3f})")
+            feat_str = "; ".join(feat_parts)
+            new_note = (
+                f" The source IP {src} has not been observed before, "
+                f"indicating this may be a new attacker or freshly compromised host."
+                if is_new else ""
+            )
             return (
-                f"{alert.severity} {alert.type} from {alert.src_ip}: "
-                f"ML model flagged abnormal behavior — top indicators: {factors_str}."
+                f"The Isolation Forest model has flagged traffic from {src} as a "
+                f"high-confidence statistical anomaly deviating from the established "
+                f"behavioral baseline.{new_note} "
+                f"Primary contributing features: {feat_str}. "
+                f"This combination of signals falls outside normal operational parameters "
+                f"and may indicate an emerging threat, a lateral movement attempt, "
+                f"or a novel attack pattern not covered by signature-based rules."
             )
 
-        # Fall back to feature-vector narrative
+        # Fallback for ML anomaly without SHAP data
         observations = []
-        if fv.get("failed_logins_60s", 0) > 3:
-            observations.append(f"{int(fv['failed_logins_60s'])} failed logins in 60 s")
-        if fv.get("unique_ports_10s", 0) > 5:
-            observations.append(f"{int(fv['unique_ports_10s'])} unique ports hit in 10 s")
-        if fv.get("bytes_out_60s", 0) > 5000:
-            observations.append(f"{int(fv['bytes_out_60s']):,} bytes outbound in 60 s")
-        if fv.get("error_rate", 0) > 0.5:
-            observations.append(f"{fv['error_rate']:.0%} error rate")
-        if fv.get("requests_per_min", 0) > 50:
-            observations.append(f"{int(fv['requests_per_min'])} requests/min")
-        if fv.get("is_new_ip", 0):
-            observations.append("previously unseen source IP")
-        if fv.get("is_off_hours", 0):
-            observations.append("off-hours activity")
+        if failed > 0:
+            observations.append(f"{failed} failed authentication attempts in 60 s")
+        if ports > 0:
+            observations.append(f"{ports} unique ports probed in 10 s")
+        if bytes_out > 1000:
+            observations.append(f"{bytes_out:,} bytes of outbound traffic in 60 s")
+        if reqs_min > 10:
+            observations.append(f"{reqs_min} requests per minute")
+        if is_new:
+            observations.append("source IP not previously seen in this session")
+        if off_hrs:
+            observations.append("activity occurring outside normal business hours")
 
-        if observations:
-            return (
-                f"{alert.severity} {alert.type} from {alert.src_ip}: "
-                + ", ".join(observations) + "."
-            )
-
+        obs_str = "; ".join(observations) if observations else "multivariate traffic pattern"
         return (
-            f"{alert.severity} statistical anomaly from {alert.src_ip} — "
-            "behavior deviates significantly from established baseline traffic patterns."
+            f"The ML anomaly detector has flagged traffic from {src} as statistically "
+            f"abnormal. Observed signals: {obs_str}. "
+            f"While no single indicator crosses a rule-based threshold, the combination "
+            f"of features exceeds the Isolation Forest anomaly score learned during "
+            f"training — suggesting coordinated or low-and-slow attack behaviour "
+            f"designed to evade signature-based detection."
         )
 
 
