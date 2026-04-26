@@ -25,7 +25,7 @@ load_dotenv()
 
 log = logging.getLogger(__name__)
 
-ALERT_DEDUP_SECONDS = int(os.getenv("ALERT_DEDUP_SECONDS", "30"))
+ALERT_DEDUP_SECONDS = int(os.getenv("ALERT_DEDUP_SECONDS", "10"))
 MERGE_WINDOW_SECONDS = 5
 SEVERITY_ORDER = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
 
@@ -133,6 +133,14 @@ class AlertAggregator:
         # Park as pending (overwrites any expired pending for this IP)
         self._pending_merge[src] = incoming
         return incoming
+
+    def clear(self) -> None:
+        """Wipe all stored alerts and dedup tracking — used before a simulate run."""
+        with self._lock:
+            self._alerts.clear()
+            self._last_seen.clear()
+            self._pending_merge.clear()
+        log.info("AlertAggregator cleared")
 
     # ------------------------------------------------------------------
     # Query methods

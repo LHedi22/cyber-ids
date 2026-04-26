@@ -1,14 +1,16 @@
 """
 LLM interpreter: calls Ollama to generate human-readable alert explanations.
 
-Cache key is (alert_type, severity) — the explanation describes the attack class,
-not the specific source IP, so reusing it across repeated alerts of the same type
-is accurate and avoids burning LLM tokens on identical prompts.
+Cache key is (alert_type, severity, detection_source) — finer than (type, severity)
+so rule-engine and ML alerts of the same type get distinct explanations.
+Each entry expires after CACHE_TTL seconds so stale explanations are refreshed.
+Fallback responses (LLM unavailable) are never cached — they embed src_ip.
 Cache is bounded at LLM_CACHE_MAX entries (evict oldest on overflow).
 """
 
 import logging
 import os
+import time
 from collections import OrderedDict
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -25,8 +27,9 @@ log = logging.getLogger(__name__)
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "phi3:mini")
-LLM_TIMEOUT = 5.0      # seconds; keep the pipeline flowing if Ollama is slow
-LLM_CACHE_MAX = 20     # max unique (type, severity) pairs cached
+LLM_TIMEOUT = 30.0      # seconds; keep the pipeline flowing if Ollama is slow
+LLM_CACHE_MAX = 20      # max unique (type, severity, detection_source) entries cached
+CACHE_TTL     = 60.0    # seconds before a cached explanation is regenerated
 
 
 def _format_shap_factors(shap_factors: list) -> str:
@@ -79,8 +82,8 @@ class LLMInterpreter:
     def __init__(self) -> None:
         self._host = OLLAMA_HOST.rstrip("/")
         self._model = OLLAMA_MODEL
-        # OrderedDict used as a bounded LRU-style cache (evict oldest on overflow)
-        self._cache: OrderedDict[tuple, str] = OrderedDict()
+        # Maps (type, severity, detection_source) → (explanation, expiry_monotonic)
+        self._cache: OrderedDict[tuple, tuple[str, float]] = OrderedDict()
 
     # ------------------------------------------------------------------
     # Public API
@@ -89,18 +92,28 @@ class LLMInterpreter:
     def interpret(self, alert: "Alert") -> str:
         """
         Return a 1-2 sentence explanation for the alert.
-        Reads from cache if the (type, severity) combo was seen before.
-        Falls back gracefully on any Ollama error.
+        Cache key includes detection_source so rule-engine and ML alerts
+        of the same type receive distinct explanations.
+        Fallback responses are never cached (they embed the per-alert src_ip).
         """
-        cache_key = (alert.type, alert.severity)
+        cache_key = (alert.type, alert.severity, alert.detection_source)
+        now = time.monotonic()
 
         if cache_key in self._cache:
-            self._cache.move_to_end(cache_key)  # refresh recency
-            log.debug("LLM cache hit for %s/%s", alert.type, alert.severity)
-            return self._cache[cache_key]
+            text, expiry = self._cache[cache_key]
+            if now < expiry:
+                self._cache.move_to_end(cache_key)
+                log.debug("LLM cache hit for %s/%s/%s", *cache_key)
+                return text
+            # Entry expired — remove and regenerate
+            del self._cache[cache_key]
 
         result = self._call_ollama(alert)
-        self._cache[cache_key] = result
+        if result is None:
+            # Fallback: build from alert data without caching
+            return self._fallback(alert)
+
+        self._cache[cache_key] = (result, now + CACHE_TTL)
         if len(self._cache) > LLM_CACHE_MAX:
             self._cache.popitem(last=False)  # evict oldest
 
@@ -118,7 +131,8 @@ class LLMInterpreter:
     # Internal
     # ------------------------------------------------------------------
 
-    def _call_ollama(self, alert: "Alert") -> str:
+    def _call_ollama(self, alert: "Alert") -> "str | None":
+        """Return the LLM response string, or None if Ollama is unavailable."""
         prompt = _build_prompt(alert)
         payload = {
             "model": self._model,
@@ -145,11 +159,58 @@ class LLMInterpreter:
         except Exception as exc:
             log.error("LLM call failed for %s: %s", alert.type, exc)
 
-        return self._fallback(alert)
+        return None
 
     @staticmethod
     def _fallback(alert: "Alert") -> str:
-        return f"[LLM unavailable] {alert.type} detected from {alert.src_ip}"
+        """Build a meaningful explanation from SHAP factors and features when Ollama is down."""
+        fv = alert.feature_vector or {}
+
+        # SHAP factors are the richest signal — use them if present
+        if alert.shap_factors:
+            top = sorted(
+                alert.shap_factors,
+                key=lambda f: abs(f.get("shap_contribution", 0)),
+                reverse=True,
+            )[:2]
+            parts = []
+            for f in top:
+                name = f.get("feature", "").replace("_", " ")
+                val  = f.get("value", "")
+                parts.append(f"{name} = {val}")
+            factors_str = "; ".join(parts)
+            return (
+                f"{alert.severity} {alert.type} from {alert.src_ip}: "
+                f"ML model flagged abnormal behavior — top indicators: {factors_str}."
+            )
+
+        # Fall back to feature-vector narrative
+        observations = []
+        if fv.get("failed_logins_60s", 0) > 3:
+            observations.append(f"{int(fv['failed_logins_60s'])} failed logins in 60 s")
+        if fv.get("unique_ports_10s", 0) > 5:
+            observations.append(f"{int(fv['unique_ports_10s'])} unique ports hit in 10 s")
+        if fv.get("bytes_out_60s", 0) > 5000:
+            observations.append(f"{int(fv['bytes_out_60s']):,} bytes outbound in 60 s")
+        if fv.get("error_rate", 0) > 0.5:
+            observations.append(f"{fv['error_rate']:.0%} error rate")
+        if fv.get("requests_per_min", 0) > 50:
+            observations.append(f"{int(fv['requests_per_min'])} requests/min")
+        if fv.get("is_new_ip", 0):
+            observations.append("previously unseen source IP")
+        if fv.get("is_off_hours", 0):
+            observations.append("off-hours activity")
+
+        if observations:
+            return (
+                f"{alert.severity} {alert.type} from {alert.src_ip}: "
+                + ", ".join(observations) + "."
+            )
+
+        return (
+            f"{alert.severity} statistical anomaly from {alert.src_ip} — "
+            "behavior deviates significantly from established baseline traffic patterns."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -200,26 +261,29 @@ if __name__ == "__main__":
         _fail("interpret() returned empty string")
 
     if reachable:
-        # Should be real LLM output, not fallback
         if result.startswith("[LLM unavailable]"):
             _fail("Ollama is up but got fallback string")
+        # Successful result must be cached; second call must return same text
+        result2 = interpreter.interpret(alert)
+        if result2 != result:
+            _fail("cached result differs from original")
         log.info("LLM output: %s", result)
     else:
-        # Must be fallback
-        expected_fallback = f"[LLM unavailable] {alert.type} detected from {alert.src_ip}"
-        if result != expected_fallback:
-            _fail(f"expected fallback '{expected_fallback}', got '{result}'")
-
-    # Verify caching: second call returns identical string object
-    result2 = interpreter.interpret(alert)
-    if result2 != result:
-        _fail("cached result differs from original")
+        # Fallback must mention the alert type and source IP
+        if alert.type not in result or alert.src_ip not in result:
+            _fail(f"fallback missing type/IP: '{result}'")
+        # Fallback must NOT be cached (each call produces a fresh string)
+        cache_key = (alert.type, alert.severity, alert.detection_source)
+        if cache_key in interpreter._cache:
+            _fail("fallback response should not be stored in cache")
+        log.info("Fallback output: %s", result)
 
     # Verify cache eviction: stuff cache directly to avoid LLM network calls
+    expiry = time.monotonic() + CACHE_TTL
     evict_interp = LLMInterpreter()
     for i in range(LLM_CACHE_MAX + 5):
-        key = (f"TYPE_{i}", "HIGH")
-        evict_interp._cache[key] = f"explanation {i}"
+        key = (f"TYPE_{i}", "HIGH", "rule_engine")
+        evict_interp._cache[key] = (f"explanation {i}", expiry)
         if len(evict_interp._cache) > LLM_CACHE_MAX:
             evict_interp._cache.popitem(last=False)
     if len(evict_interp._cache) > LLM_CACHE_MAX:

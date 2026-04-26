@@ -188,6 +188,9 @@ async def simulate_attack() -> JSONResponse:
          "bytes": 50000, "action": "alert"},
     ]
 
+    if _aggregator is not None:
+        _aggregator.clear()
+
     os.makedirs(
         os.path.dirname(SNORT_ALERT_PATH) if os.path.dirname(SNORT_ALERT_PATH) else ".",
         exist_ok=True,

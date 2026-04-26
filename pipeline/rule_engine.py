@@ -94,12 +94,12 @@ class RuleEngine:
         self.port_scan_threshold = int(os.getenv("PORT_SCAN_THRESHOLD", "20"))
         self.data_exfil_bytes = int(os.getenv("DATA_EXFIL_BYTES", "10000"))
 
-        # Rules in evaluation order: highest severity first
+        # Rules in evaluation order: BRUTE_FORCE → DATA_EXFIL → PORT_SCAN → SQL_INJECTION → OFF_HOURS_ACCESS
         self._rules = [
             self._rule_brute_force,
+            self._rule_data_exfil,
             self._rule_port_scan,
             self._rule_sql_injection,
-            self._rule_data_exfil,
             self._rule_off_hours_access,
         ]
 
@@ -141,10 +141,10 @@ class RuleEngine:
         return None
 
     def _rule_data_exfil(self, fv: FeatureVector) -> Optional[Alert]:
-        """HIGH: bytes_out_60s > DATA_EXFIL_BYTES AND is_new_ip == 1"""
+        """HIGH: bytes_out_60s > DATA_EXFIL_BYTES on a non-standard port"""
         if (
             fv.features["bytes_out_60s"] > self.data_exfil_bytes
-            and fv.features["is_new_ip"] == 1
+            and fv.source_event.dst_port not in (80, 443, 22, 53)
         ):
             return _new_alert("DATA_EXFIL", "HIGH", "DATA_EXFIL", fv)
         return None
@@ -232,8 +232,8 @@ if __name__ == "__main__":
     if alert is None or alert.type != "SQL_INJECTION":
         _fail(f"expected SQL_INJECTION alert, got {alert}")
 
-    # Test 4: DATA_EXFIL
-    alert = engine.evaluate(_make_fv(bytes_out_60s=50000, is_new_ip=1))
+    # Test 4: DATA_EXFIL — large bytes on non-standard port (port 4444 simulates C2 channel)
+    alert = engine.evaluate(_make_fv(bytes_out_60s=50000, dst_port=4444))
     if alert is None or alert.type != "DATA_EXFIL":
         _fail(f"expected DATA_EXFIL alert, got {alert}")
 
@@ -249,9 +249,9 @@ if __name__ == "__main__":
     if alert is not None:
         _fail(f"expected no alert for normal traffic, got {alert.type}")
 
-    # Test 7: priority order — BRUTE_FORCE shadows PORT_SCAN when both conditions met
-    alert = engine.evaluate(_make_fv(failed_logins_60s=10, unique_ports_10s=25))
+    # Test 7: priority order — BRUTE_FORCE shadows DATA_EXFIL and PORT_SCAN when all conditions met
+    alert = engine.evaluate(_make_fv(failed_logins_60s=10, bytes_out_60s=50000, dst_port=4444, unique_ports_10s=25))
     if alert is None or alert.type != "BRUTE_FORCE":
-        _fail(f"BRUTE_FORCE should shadow PORT_SCAN, got {alert}")
+        _fail(f"BRUTE_FORCE should shadow DATA_EXFIL/PORT_SCAN, got {alert}")
 
     print("PASS: rule_engine self-test")

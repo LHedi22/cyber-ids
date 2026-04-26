@@ -853,14 +853,13 @@ td {
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     setWsStatus('○ Connecting…');
-    setLive('reconnecting');
 
     ws = new WebSocket(proto + '://' + location.host + '/ws/alerts');
 
     ws.addEventListener('open', () => {
       wsDelay = 1000;
       setWsStatus('● Connected to ' + location.host);
-      setLive('online');
+      fetchHealth();
     });
 
     ws.addEventListener('message', (evt) => {
@@ -873,7 +872,7 @@ td {
     });
 
     ws.addEventListener('close', () => {
-      setLive('reconnecting');
+      fetchHealth();
       const delay = wsDelay;
       wsDelay = Math.min(wsDelay * 2, 30000);
       setWsStatus('○ Reconnecting in ' + (delay / 1000).toFixed(0) + 's…');
@@ -943,7 +942,7 @@ td {
     await Promise.all([fetchHealth(), loadAlerts(), fetchStats()]);
     connect();
     setInterval(fetchStats,  10000);
-    setInterval(fetchHealth, 15000);
+    setInterval(fetchHealth,  5000);
   }
 
   boot();
