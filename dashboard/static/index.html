@@ -5,717 +5,406 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CyberIDS — Security Operations Center</title>
 <style>
-/* ── Reset & tokens ─────────────────────────────────────────── */
+/* ── Tokens ──────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:       #0d1117;
-  --surface:  #161b22;
-  --border:   #30363d;
-  --text:     #c9d1d9;
-  --muted:    #8b949e;
-  --accent:   #00ff88;
+  --bg:         #080c10;
+  --surface:    #0d1520;
+  --surface-hi: #131f2d;
+  --border:     #1a2840;
+  --text:       #9ab0c8;
+  --text-hi:    #d4e4f4;
+  --muted:      #4a6880;
+  --accent:     #00ff88;
+  --accent-dim: rgba(0,255,136,0.07);
 
   --critical: #ef4444;
   --high:     #f97316;
   --medium:   #eab308;
   --low:      #22c55e;
 
-  --rule-bg:  #1d4ed8;
-  --ml-bg:    #7c3aed;
-  --both-bg:  #065f46;
+  --rule-col: #3b82f6;
+  --ml-col:   #a855f7;
+  --both-col: #10b981;
 }
 
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  min-height: 100vh;
+html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+  font-size: 13px; line-height: 1.5; }
+
+/* Subtle tactical grid overlay */
+body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image:
+    linear-gradient(rgba(0,212,255,0.016) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,255,0.016) 1px, transparent 1px);
+  background-size: 48px 48px;
 }
 
-/* ── Nav ────────────────────────────────────────────────────── */
-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  height: 52px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 50;
+/* Slow scan-line sweep */
+body::after {
+  content: '';
+  position: fixed; left: 0; right: 0; height: 2px; top: -2px;
+  background: linear-gradient(90deg, transparent 0%, rgba(0,255,136,0.15) 50%, transparent 100%);
+  animation: scanLine 14s linear infinite;
+  pointer-events: none; z-index: 1;
+}
+@keyframes scanLine { to { top: 100vh; } }
+
+/* ── App shell ───────────────────────────────────────────── */
+#app { display: grid; grid-template-rows: 48px 1fr; height: 100vh; position: relative; z-index: 2; }
+
+/* ── Header ──────────────────────────────────────────────── */
+header {
+  display: flex; align-items: center; padding: 0 20px; gap: 16px;
+  background: rgba(8,12,16,0.92); border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(10px); flex-shrink: 0;
 }
 
 .logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-family: "Courier New", monospace;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--accent);
-  letter-spacing: 1px;
+  display: flex; align-items: center; gap: 8px;
+  font-family: "Courier New", monospace; font-size: 15px; font-weight: 700;
+  color: var(--accent); letter-spacing: 3px; text-transform: uppercase; flex-shrink: 0;
 }
+.logo-glyph { font-size: 19px; opacity: 0.9; }
 
-.logo-hex { font-size: 22px; line-height: 1; }
+.h-sep { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
 
+/* Compact stat chips in header */
+.h-stats { display: flex; align-items: center; gap: 14px; }
+
+.hstat { display: flex; align-items: baseline; gap: 4px; }
+.hstat-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); }
+.hstat-val { font-family: "Courier New", monospace; font-size: 19px; font-weight: 700; line-height: 1; }
+#hv-total    { color: var(--text-hi); }
+#hv-critical { color: var(--critical); }
+#hv-high     { color: var(--high); }
+#hv-medium   { color: var(--medium); }
+#hv-apm      { color: var(--accent); }
+
+/* Live badge */
 .live-badge {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  font-family: "Courier New", monospace;
-  font-weight: 600;
-  letter-spacing: 1px;
-  transition: color 0.3s;
+  margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  font-family: "Courier New", monospace; font-size: 10px; font-weight: 700;
+  letter-spacing: 2px; text-transform: uppercase;
 }
-
 .live-badge.online  { color: var(--accent); }
 .live-badge.offline { color: var(--muted); }
-
-.live-dot {
-  width: 9px; height: 9px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.live-badge.online .live-dot {
-  animation: livePulse 1.8s ease-in-out infinite;
-}
-
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.live-badge.online .live-dot { animation: livePulse 1.8s ease-in-out infinite; }
 @keyframes livePulse {
-  0%,100% { box-shadow: 0 0 0 0 rgba(0,255,136,0.6); }
-  50%      { box-shadow: 0 0 0 6px rgba(0,255,136,0); }
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,255,136,0.7); }
+  50%      { box-shadow: 0 0 0 5px rgba(0,255,136,0); }
 }
 
-/* ── Stats row ──────────────────────────────────────────────── */
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+/* WS status text */
+.ws-status { font-size: 10px; color: var(--muted); font-family: "Courier New", monospace; flex-shrink: 0; }
+
+/* ── Main layout ─────────────────────────────────────────── */
+main { display: grid; grid-template-columns: 390px 1fr; overflow: hidden; }
+
+/* ── LEFT COLUMN ─────────────────────────────────────────── */
+.col-left { display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
+
+/* Filter bar */
+.filter-bar {
+  display: flex; align-items: center; gap: 5px; padding: 6px 12px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+  background: rgba(13,21,32,0.7);
 }
-
-.stat-card {
-  padding: 14px 20px;
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.filter-lbl { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-right: 3px; }
+.filter-btn {
+  padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 700;
+  font-family: "Courier New", monospace; letter-spacing: 0.5px; text-transform: uppercase;
+  cursor: pointer; border: 1px solid transparent; background: transparent;
+  transition: opacity 0.12s; opacity: 0.35;
 }
-.stat-card:last-child { border-right: none; }
+.filter-btn.active { opacity: 1; }
+.filter-btn:hover  { opacity: 0.8; }
+.fb-all      { color: var(--muted);    border-color: var(--border); }
+.fb-CRITICAL { color: var(--critical); border-color: rgba(239,68,68,0.35); }
+.fb-HIGH     { color: var(--high);     border-color: rgba(249,115,22,0.35); }
+.fb-MEDIUM   { color: var(--medium);   border-color: rgba(234,179,8,0.35); }
+.fb-LOW      { color: var(--low);      border-color: rgba(34,197,94,0.35); }
+.filter-count { font-size: 9px; color: var(--muted); font-family: "Courier New", monospace; margin-left: auto; }
 
-.stat-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1.2px;
-  color: var(--muted);
-}
-
-.stat-value {
-  font-size: 30px;
-  font-weight: 700;
-  font-family: "Courier New", monospace;
-  line-height: 1;
-}
-
-#sv-total    { color: var(--text); }
-#sv-critical { color: var(--critical); }
-#sv-high     { color: var(--high); }
-#sv-medium   { color: var(--medium); }
-#sv-apm      { color: var(--accent); }
-
-/* ── Alert table ────────────────────────────────────────────── */
-.table-wrap {
-  max-height: 50vh;
-  overflow-y: auto;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-thead th {
-  position: sticky;
-  top: 0;
-  background: var(--surface);
-  padding: 9px 12px;
-  text-align: left;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--muted);
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
-  z-index: 5;
-}
-
-tbody tr {
-  border-bottom: 1px solid var(--border);
-  transition: background 0.1s;
-}
-tbody tr:hover { background: rgba(255,255,255,0.03); }
-
-td {
-  padding: 8px 12px;
-  font-size: 13px;
-  vertical-align: middle;
-  white-space: nowrap;
-}
-
-/* Column widths */
-.c-time { width: 78px;  color: var(--muted); font-family: "Courier New", monospace; font-size: 12px; }
-.c-sev  { width: 100px; }
-.c-type { width: 170px; font-family: "Courier New", monospace; font-size: 12px; color: var(--muted); }
-.c-src  { width: 140px; font-family: "Courier New", monospace; font-size: 12px; }
-.c-dst  { width: 130px; font-family: "Courier New", monospace; font-size: 12px; color: var(--muted); }
-.c-det  { width: 90px; }
-.c-expl { max-width: 240px; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 12px; }
-
-.ip-copy {
-  cursor: pointer;
-  border-radius: 3px;
-  padding: 1px 4px;
-  margin: -1px -4px;
-  transition: background 0.15s, color 0.15s;
-}
-.ip-copy:hover { background: rgba(0,255,136,0.1); color: var(--accent); }
-.ip-copy:active { background: rgba(0,255,136,0.2); }
-
-/* Severity badges */
-.badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  font-family: "Courier New", monospace;
-  line-height: 18px;
-}
-
-.sev-CRITICAL { background: rgba(239,68,68,0.15);  color: var(--critical); }
-.sev-HIGH     { background: rgba(249,115,22,0.15); color: var(--high); }
-.sev-MEDIUM   { background: rgba(234,179,8,0.15);  color: var(--medium); }
-.sev-LOW      { background: rgba(34,197,94,0.15);  color: var(--low); }
-
-.det-rule { background: rgba(29,78,216,0.25);  color: #93b4fd; }
-.det-ml   { background: rgba(124,58,237,0.25); color: #c4b5fd; }
-.det-both { background: rgba(6,95,70,0.4);     color: #6ee7b7; }
-
-/* New-row flash animation */
-@keyframes rowFlash {
-  0%   { background: rgba(0,255,136,0.12); }
-  100% { background: transparent; }
-}
-.row-new { animation: rowFlash 1.2s ease-out forwards; }
-
-/* Tooltip via title attribute — enhanced with CSS data-tooltip fallback */
-[data-tooltip] { position: relative; cursor: default; }
-[data-tooltip]:hover::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  z-index: 100;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-size: 12px;
-  line-height: 1.5;
-  padding: 8px 12px;
-  border-radius: 6px;
-  white-space: normal;
-  min-width: 260px;
-  max-width: 380px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
+/* Alert list */
+.alert-list { flex: 1; overflow-y: auto; padding: 3px 0; }
+.alert-list:focus { outline: none; }
 
 /* Empty state */
 .empty-state {
-  padding: 56px 24px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 13px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100%; gap: 8px; color: var(--muted); font-size: 12px; padding: 32px; text-align: center;
 }
-.empty-icon { font-size: 36px; margin-bottom: 10px; opacity: 0.35; }
+.empty-icon { font-size: 30px; opacity: 0.25; margin-bottom: 4px; }
 
-/* ── Detail panel ───────────────────────────────────────────── */
-.detail-panel {
-  background: var(--surface);
-  border-top: 1px solid var(--border);
+/* ── Alert card ──────────────────────────────────────────── */
+.alert-card {
+  display: flex; align-items: stretch; cursor: pointer; position: relative;
+  transition: background 0.1s; border-bottom: 1px solid rgba(26,40,64,0.45);
+}
+.alert-card:hover    { background: rgba(255,255,255,0.022); }
+.alert-card.selected { background: rgba(0,255,136,0.04); }
+
+/* Left severity bar */
+.sev-bar { width: 3px; flex-shrink: 0; }
+.sev-bar-CRITICAL { background: var(--critical); }
+.sev-bar-HIGH     { background: var(--high); }
+.sev-bar-MEDIUM   { background: var(--medium); }
+.sev-bar-LOW      { background: var(--low); }
+
+/* CRITICAL cards get a subtle ambient glow */
+.alert-card[data-sev="CRITICAL"] { box-shadow: inset 4px 0 16px rgba(239,68,68,0.1); }
+
+/* Card body */
+.card-body {
+  flex: 1; padding: 7px 12px 7px 10px; min-width: 0;
   display: grid;
-  grid-template-columns: 1fr 320px;
-  min-height: 160px;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 2px 8px;
 }
 
-.detail-left {
-  padding: 18px 24px;
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+/* Row 1 cells */
+.card-sev   { grid-column:1; grid-row:1; align-self:center; }
+.card-type  { grid-column:2; grid-row:1; align-self:center;
+  font-family:"Courier New",monospace; font-size:12px; font-weight:700;
+  color:var(--text-hi); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.card-right { grid-column:3; grid-row:1; display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.card-time  { font-family:"Courier New",monospace; font-size:10px; color:var(--muted); }
+
+/* Row 2 */
+.card-bottom { grid-column:1/-1; grid-row:2; display:flex; align-items:center; gap:7px; }
+.card-ip {
+  font-family:"Courier New",monospace; font-size:10px; color:var(--muted);
+  cursor:pointer; padding:0 2px; border-radius:2px; transition:color .1s,background .1s;
 }
+.card-ip:hover { color:var(--accent); background:var(--accent-dim); }
+.card-arrow { color:var(--muted); font-size:9px; }
+.card-expl { font-size:10px; color:var(--muted); overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; flex:1; min-width:0; opacity:0.6; }
 
-.detail-section-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1.2px;
-  color: var(--muted);
-  margin-bottom: 2px;
+/* New card slide-in */
+@keyframes cardIn {
+  from { opacity:0; transform:translateY(-6px); }
+  to   { opacity:1; transform:translateY(0); }
 }
+.card-new { animation: cardIn 0.22s ease-out forwards; }
 
-.detail-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
+/* ── Badges ──────────────────────────────────────────────── */
+.badge {
+  display:inline-block; padding:1px 6px; border-radius:3px;
+  font-size:9px; font-weight:700; font-family:"Courier New",monospace;
+  letter-spacing:0.5px; text-transform:uppercase; line-height:16px;
 }
+.sev-CRITICAL { background:rgba(239,68,68,0.15);  color:var(--critical); }
+.sev-HIGH     { background:rgba(249,115,22,0.15); color:var(--high); }
+.sev-MEDIUM   { background:rgba(234,179,8,0.15);  color:var(--medium); }
+.sev-LOW      { background:rgba(34,197,94,0.15);  color:var(--low); }
+.det-rule { background:rgba(59,130,246,0.18);  color:#93b4fd; }
+.det-ml   { background:rgba(168,85,247,0.18);  color:#c4b5fd; }
+.det-both { background:rgba(16,185,129,0.22);  color:#6ee7b7; }
 
-.detail-kv { display: flex; flex-direction: column; gap: 2px; }
-
-.detail-kv-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--muted);
-}
-
-.detail-kv-value {
-  font-family: "Courier New", monospace;
-  font-size: 12px;
-  color: var(--text);
-}
-
-.detail-explanation {
-  font-size: 13px;
-  line-height: 1.65;
-  color: var(--text);
-  padding: 12px 14px;
-  background: rgba(255,255,255,0.03);
-  border-left: 2px solid var(--border);
-  border-radius: 0 6px 6px 0;
-  font-style: italic;
-}
-
-.detail-placeholder {
-  color: var(--muted);
-  font-size: 13px;
-  font-style: italic;
-  margin: auto;
-  text-align: center;
-}
-
-/* ── SHAP bar chart ─────────────────────────────────────────── */
-.shap-panel {
-  padding: 18px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.shap-title {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1.2px;
-  color: var(--muted);
-  margin-bottom: 4px;
-}
-
-.shap-row {
-  display: grid;
-  grid-template-columns: 130px 1fr 46px;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  font-family: "Courier New", monospace;
-}
-
-.shap-feat-name {
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.shap-bar-track {
-  height: 7px;
-  background: rgba(255,255,255,0.07);
-  border-radius: 4px;
-  overflow: hidden;
-  position: relative;
-}
-
-.shap-bar-fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.4s ease;
-}
-
-.shap-val {
-  text-align: right;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.shap-empty {
-  font-size: 12px;
-  color: var(--muted);
-  font-style: italic;
-}
-
-/* ── Filter bar ─────────────────────────────────────────────── */
-.filter-bar {
-  padding: 8px 12px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.filter-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--muted);
-  margin-right: 4px;
-}
-
-.filter-btn {
-  padding: 3px 10px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  border: 1px solid transparent;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  font-family: "Courier New", monospace;
-  transition: background 0.15s, opacity 0.15s;
-  opacity: 0.45;
-}
-.filter-btn.active { opacity: 1; }
-
-.filter-all      { background: rgba(139,148,158,0.15); color: var(--muted);     border-color: var(--border); }
-.filter-CRITICAL { background: rgba(239,68,68,0.15);   color: var(--critical);  border-color: rgba(239,68,68,0.4); }
-.filter-HIGH     { background: rgba(249,115,22,0.15);  color: var(--high);      border-color: rgba(249,115,22,0.4); }
-.filter-MEDIUM   { background: rgba(234,179,8,0.15);   color: var(--medium);    border-color: rgba(234,179,8,0.4); }
-.filter-LOW      { background: rgba(34,197,94,0.15);   color: var(--low);       border-color: rgba(34,197,94,0.4); }
-
-.filter-btn:hover { opacity: 1; }
-
-.filter-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
-
-/* Paused rows are hidden while stream is paused */
-.stream-paused .row-pending { display: none; }
-
-/* ── Action bar ─────────────────────────────────────────────── */
+/* ── Action bar ──────────────────────────────────────────── */
 .action-bar {
-  padding: 12px 24px;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  display:flex; align-items:center; gap:8px; padding:7px 12px;
+  border-top:1px solid var(--border); flex-shrink:0; background:rgba(13,21,32,0.7);
 }
-
 .btn {
-  padding: 8px 18px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
-  letter-spacing: 0.3px;
+  padding:5px 13px; border-radius:4px; font-size:12px; font-weight:600;
+  cursor:pointer; border:1px solid transparent; font-family:inherit;
+  transition:background .12s, box-shadow .12s, transform .08s; letter-spacing:0.2px;
 }
-.btn:active { transform: scale(0.97); }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:active { transform:scale(0.96); }
+.btn:disabled { opacity:0.3; cursor:not-allowed; }
 
-.btn-simulate {
-  background: transparent;
-  color: var(--critical);
-  border-color: var(--critical);
-}
-.btn-simulate:hover:not(:disabled) {
-  background: rgba(239,68,68,0.1);
-  box-shadow: 0 0 14px rgba(239,68,68,0.25);
-}
+.btn-sim   { color:var(--critical); border-color:rgba(239,68,68,0.4); background:transparent; }
+.btn-sim:hover:not(:disabled) { background:rgba(239,68,68,0.08); box-shadow:0 0 10px rgba(239,68,68,0.18); }
 
-.btn-clear {
-  background: transparent;
-  color: var(--muted);
-  border-color: var(--border);
-}
-.btn-clear:hover:not(:disabled) {
-  background: rgba(255,255,255,0.05);
-  color: var(--text);
-}
+.btn-pause { color:var(--medium); border-color:rgba(234,179,8,0.35); background:transparent; }
+.btn-pause.paused { color:var(--accent); border-color:rgba(0,255,136,0.35); }
 
-.btn-pause {
-  background: transparent;
-  color: var(--medium);
-  border-color: rgba(234,179,8,0.4);
+.btn-clr   { color:var(--muted); border-color:var(--border); background:transparent; }
+.btn-clr:hover:not(:disabled) { background:rgba(255,255,255,0.04); color:var(--text); }
+
+.action-status { font-size:10px; color:var(--muted); font-family:"Courier New",monospace; margin-left:auto; }
+
+/* ── RIGHT COLUMN ────────────────────────────────────────── */
+.col-right { display:grid; grid-template-rows:1fr 220px; overflow:hidden; }
+
+/* ── Detail panel ────────────────────────────────────────── */
+.detail-panel { overflow-y:auto; padding:24px; display:flex; flex-direction:column; gap:18px; }
+
+/* Empty detail */
+.detail-empty {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  height:100%; gap:8px; color:var(--muted); text-align:center;
 }
-.btn-pause:hover:not(:disabled) {
-  background: rgba(234,179,8,0.1);
-}
-.btn-pause.paused {
-  color: var(--accent);
-  border-color: rgba(0,255,136,0.4);
-}
-.btn-pause.paused:hover:not(:disabled) {
-  background: rgba(0,255,136,0.08);
+.detail-empty-glyph { font-size:44px; opacity:0.1; margin-bottom:12px;
+  font-family:"Courier New",monospace; color:var(--accent); }
+.detail-empty-title { font-size:14px; color:var(--muted); }
+.detail-empty-sub   { font-size:11px; color:var(--muted); opacity:0.55; }
+.detail-empty-hint  {
+  margin-top:20px; font-family:"Courier New",monospace; font-size:9px;
+  color:var(--muted); opacity:0.35; letter-spacing:1.5px; text-transform:uppercase;
 }
 
-/* Selected row */
-tbody tr.selected { background: rgba(0,255,136,0.06) !important; }
-tbody tr.selected:hover { background: rgba(0,255,136,0.09) !important; }
+/* Detail header */
+.detail-header {
+  display:flex; align-items:stretch; gap:14px;
+  padding-bottom:16px; border-bottom:1px solid var(--border);
+}
+.detail-sev-bar { width:4px; border-radius:2px; flex-shrink:0; min-height:44px; }
+.detail-hdr-body { flex:1; min-width:0; }
+.detail-type {
+  font-family:"Courier New",monospace; font-size:20px; font-weight:700;
+  color:var(--text-hi); letter-spacing:1px; line-height:1.15; margin-bottom:8px;
+}
+.detail-badges { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 
-.action-status {
-  font-size: 12px;
-  color: var(--muted);
-  font-family: "Courier New", monospace;
-  margin-left: auto;
+/* KV grid */
+.kv-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(155px,1fr)); gap:10px 18px; }
+.kv { display:flex; flex-direction:column; gap:2px; }
+.kv-lbl { font-size:9px; text-transform:uppercase; letter-spacing:1.2px; color:var(--muted); }
+.kv-val { font-family:"Courier New",monospace; font-size:11px; color:var(--text); }
+
+/* Section heading with line */
+.sec-lbl {
+  font-size:9px; text-transform:uppercase; letter-spacing:1.8px; color:var(--muted);
+  display:flex; align-items:center; gap:10px;
+}
+.sec-lbl::after { content:''; flex:1; height:1px; background:var(--border); }
+
+/* LLM insight card */
+.insight-card {
+  background:rgba(0,255,136,0.03); border:1px solid rgba(0,255,136,0.1);
+  border-radius:6px; padding:14px 16px; font-size:13px; line-height:1.75;
+  color:var(--text); position:relative;
+}
+.insight-card::before {
+  content:'AI ASSESSMENT';
+  position:absolute; top:-8px; left:12px; background:var(--bg);
+  padding:0 6px; font-size:8px; font-weight:700; font-family:"Courier New",monospace;
+  letter-spacing:1.5px; color:var(--accent); opacity:0.7;
 }
 
-/* ── Footer WS status ───────────────────────────────────────── */
-.ws-bar {
-  padding: 5px 24px;
-  background: var(--bg);
-  border-top: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11px;
-  font-family: "Courier New", monospace;
-  color: var(--muted);
+/* SHAP bars */
+.shap-list { display:flex; flex-direction:column; gap:9px; }
+.shap-row  { display:grid; grid-template-columns:145px 1fr 48px; align-items:center; gap:10px; }
+.shap-name {
+  font-family:"Courier New",monospace; font-size:10px; color:var(--muted);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
+.shap-track { height:6px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden; }
+.shap-fill  { height:100%; border-radius:3px; min-width:2px; transition:width .5s cubic-bezier(.4,0,.2,1); }
+.shap-val   { font-family:"Courier New",monospace; font-size:10px; color:var(--muted); text-align:right; }
+.shap-empty { font-size:11px; color:var(--muted); font-style:italic; opacity:0.5; }
 
-/* ── Toast ──────────────────────────────────────────────────── */
+/* ── Terminal ─────────────────────────────────────────────── */
+.terminal { border-top:1px solid var(--border); display:flex; flex-direction:column;
+  background:#050a08; font-family:"Courier New",monospace; font-size:11px; overflow:hidden; }
+.term-hdr {
+  display:flex; align-items:center; gap:8px; padding:5px 14px;
+  background:#040806; border-bottom:1px solid rgba(0,255,65,0.1);
+  color:#00ff41; font-size:10px; font-weight:700; letter-spacing:1.5px;
+  text-transform:uppercase; flex-shrink:0;
+}
+.term-badge { margin-left:auto; font-size:9px; opacity:0.35; letter-spacing:.5px; transition:opacity .3s; }
+.term-badge.live { opacity:1; }
+.term-body { flex:1; overflow-y:auto; padding:6px 14px; line-height:1.5; word-break:break-all; }
+.log-line { white-space:pre-wrap; margin:0; }
+.log-ts   { color:#00ff41; opacity:0.25; }
+
+/* ── Toast ───────────────────────────────────────────────── */
 #toast {
-  position: fixed;
-  bottom: 32px;
-  left: 50%;
-  transform: translateX(-50%) translateY(16px);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 9px 18px;
-  border-radius: 8px;
-  font-size: 13px;
-  opacity: 0;
-  transition: opacity 0.2s, transform 0.2s;
-  pointer-events: none;
-  z-index: 200;
-  white-space: nowrap;
+  position:fixed; bottom:22px; left:50%;
+  transform:translateX(-50%) translateY(8px);
+  background:var(--surface-hi); border:1px solid var(--border); color:var(--text-hi);
+  padding:7px 16px; border-radius:6px; font-size:12px;
+  opacity:0; transition:opacity .18s,transform .18s;
+  pointer-events:none; z-index:500; white-space:nowrap;
 }
-#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 
-/* ── Two-column main grid ───────────────────────────────── */
-.main-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  height: calc(100vh - 120px);
-  overflow: hidden;
-}
-
-.left-col {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* Let flex control height instead of the old fixed max-height */
-.left-col .table-wrap {
-  flex: 1;
-  max-height: none;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.left-col .detail-panel { flex-shrink: 0; }
-.left-col .action-bar   { flex-shrink: 0; }
-
-/* ── Pipeline terminal panel ────────────────────────────── */
-.terminal-panel {
-  background: #000000;
-  border: 1px solid #1a2e1a;
-  border-radius: 6px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  font-family: "Courier New", monospace;
-  font-size: 12px;
-}
-
-.terminal-hdr {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 14px;
-  background: #060f06;
-  border-bottom: 1px solid #1a2e1a;
-  color: #00ff41;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  flex-shrink: 0;
-}
-
-.term-badge {
-  margin-left: auto;
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0.5px;
-  opacity: 0.5;
-  transition: opacity 0.3s;
-}
-
-.term-badge.online { opacity: 1; }
-
-.terminal-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 14px;
-  line-height: 1.55;
-  word-break: break-all;
-}
-
-.log-line { white-space: pre-wrap; margin: 0; }
-.log-ts   { color: #00ff41; opacity: 0.35; }
-
-/* ── Scrollbar ──────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+/* ── Scrollbar ───────────────────────────────────────────── */
+::-webkit-scrollbar { width:4px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
 </style>
 </head>
 <body>
+<div id="app">
 
-<!-- Nav -->
-<nav>
-  <div class="logo">
-    <span class="logo-hex">&#11041;</span>
-    CyberIDS
+<!-- Header -->
+<header>
+  <div class="logo"><span class="logo-glyph">◈</span>CyberIDS</div>
+  <div class="h-sep"></div>
+  <div class="h-stats">
+    <div class="hstat"><span class="hstat-lbl">Total</span><span class="hstat-val" id="hv-total">0</span></div>
+    <div class="hstat"><span class="hstat-lbl">Crit</span><span class="hstat-val" id="hv-critical">0</span></div>
+    <div class="hstat"><span class="hstat-lbl">High</span><span class="hstat-val" id="hv-high">0</span></div>
+    <div class="hstat"><span class="hstat-lbl">Med</span><span class="hstat-val" id="hv-medium">0</span></div>
+    <div class="hstat"><span class="hstat-lbl">/min</span><span class="hstat-val" id="hv-apm">0</span></div>
   </div>
   <div class="live-badge offline" id="liveBadge">
     <span class="live-dot"></span>
-    <span id="liveLabel">&#9675; CONNECTING</span>
+    <span id="liveLabel">CONNECTING</span>
   </div>
-</nav>
+  <span class="ws-status" id="wsStatus"></span>
+</header>
 
-<!-- Stats row -->
-<div class="stats-row">
-  <div class="stat-card">
-    <div class="stat-label">Total Alerts</div>
-    <div class="stat-value" id="sv-total">0</div>
+<main>
+  <!-- LEFT: Alert stream -->
+  <div class="col-left">
+    <div class="filter-bar">
+      <span class="filter-lbl">Filter</span>
+      <button class="filter-btn fb-all active"  data-sev="ALL">All</button>
+      <button class="filter-btn fb-CRITICAL"    data-sev="CRITICAL">Crit</button>
+      <button class="filter-btn fb-HIGH"        data-sev="HIGH">High</button>
+      <button class="filter-btn fb-MEDIUM"      data-sev="MEDIUM">Med</button>
+      <button class="filter-btn fb-LOW"         data-sev="LOW">Low</button>
+      <span class="filter-count" id="filterCount"></span>
+    </div>
+
+    <div class="alert-list" id="alertList" tabindex="0">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">🛡</div>
+        <p>No alerts detected</p>
+        <p style="font-size:11px;opacity:.5;margin-top:4px">Monitoring in progress…</p>
+      </div>
+    </div>
+
+    <div class="action-bar">
+      <button class="btn btn-sim"   id="btnSimulate">⚡ Simulate</button>
+      <button class="btn btn-pause" id="btnPause">⏸ Pause</button>
+      <button class="btn btn-clr"   id="btnClear">✕ Clear</button>
+      <span class="action-status" id="actionStatus"></span>
+    </div>
   </div>
-  <div class="stat-card">
-    <div class="stat-label">Critical</div>
-    <div class="stat-value" id="sv-critical">0</div>
+
+  <!-- RIGHT: Detail panel + Terminal -->
+  <div class="col-right">
+    <div class="detail-panel" id="detailPanel">
+      <div class="detail-empty">
+        <div class="detail-empty-glyph">◈</div>
+        <div class="detail-empty-title">No alert selected</div>
+        <div class="detail-empty-sub">Select an alert from the stream to inspect</div>
+        <div class="detail-empty-hint">↑ ↓ arrows · Enter · Esc to clear · P to pause</div>
+      </div>
+    </div>
+
+    <div class="terminal">
+      <div class="term-hdr">
+        <span>▸</span> Pipeline Log
+        <span class="term-badge" id="termBadge">connecting…</span>
+      </div>
+      <div class="term-body" id="termBody"></div>
+    </div>
   </div>
-  <div class="stat-card">
-    <div class="stat-label">High</div>
-    <div class="stat-value" id="sv-high">0</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">Medium</div>
-    <div class="stat-value" id="sv-medium">0</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-label">Alerts / min</div>
-    <div class="stat-value" id="sv-apm">0</div>
-  </div>
-</div>
-
-<div class="main-grid">
-<div class="left-col">
-
-<!-- Filter bar -->
-<div class="filter-bar">
-  <span class="filter-label">Filter</span>
-  <button class="filter-btn filter-all active" data-sev="ALL">All</button>
-  <button class="filter-btn filter-CRITICAL" data-sev="CRITICAL">Critical</button>
-  <button class="filter-btn filter-HIGH"     data-sev="HIGH">High</button>
-  <button class="filter-btn filter-MEDIUM"   data-sev="MEDIUM">Medium</button>
-  <button class="filter-btn filter-LOW"      data-sev="LOW">Low</button>
-  <span class="filter-sep"></span>
-  <span class="filter-label" id="filterCount" style="margin-right:0"></span>
-</div>
-
-<!-- Alert table -->
-<div class="table-wrap">
-  <table>
-    <thead>
-      <tr>
-        <th class="c-time">Time</th>
-        <th class="c-sev">Severity</th>
-        <th class="c-type">Type</th>
-        <th class="c-src">Source IP</th>
-        <th class="c-dst">Dest</th>
-        <th class="c-det">Detection</th>
-        <th class="c-expl">Explanation</th>
-      </tr>
-    </thead>
-    <tbody id="alertBody">
-      <tr id="emptyRow">
-        <td colspan="7">
-          <div class="empty-state">
-            <div class="empty-icon">&#128737;&#65039;</div>
-            <p>No alerts detected &mdash; monitoring in progress&hellip;</p>
-          </div>
-        </td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-
-<!-- Detail panel -->
-<div class="detail-panel">
-  <div class="detail-left" id="detailLeft">
-    <p class="detail-placeholder">&#8592; Select an alert row to inspect</p>
-  </div>
-  <div class="shap-panel" id="shapPanel">
-    <div class="shap-title">SHAP Feature Importance</div>
-    <p class="shap-empty">No alert selected.</p>
-  </div>
-</div>
-
-<!-- Action bar -->
-<div class="action-bar">
-  <button class="btn btn-simulate" id="btnSimulate">&#128640; Simulate Attack</button>
-  <button class="btn btn-pause"    id="btnPause">&#9646;&#9646; Pause</button>
-  <button class="btn btn-clear"   id="btnClear">&#128465; Clear</button>
-  <span class="action-status" id="actionStatus">&nbsp;</span>
-</div><!-- /.action-bar -->
-
-</div><!-- /.left-col -->
-
-<!-- Terminal panel (right column) -->
-<div class="terminal-panel">
-  <div class="terminal-hdr">
-    <span>&#11044;</span> Live Pipeline
-    <span class="term-badge" id="termBadge">&#9675; connecting&hellip;</span>
-  </div>
-  <div class="terminal-body" id="termBody"></div>
-</div>
-
-</div><!-- /.main-grid -->
-
-<!-- WS footer -->
-<div class="ws-bar">
-  <span>CyberIDS v1.0 &middot; CyberSkyHack Hackathon &middot; AI-Augmented IDS</span>
-  <span id="wsStatus">&#9675; Connecting&hellip;</span>
+</main>
 </div>
 
 <div id="toast" role="status" aria-live="polite"></div>
@@ -724,227 +413,157 @@ tbody tr.selected:hover { background: rgba(0,255,136,0.09) !important; }
 (function () {
   'use strict';
 
-  /* ── Palette (severity → shap bar color) ─── */
-  const SEV_COLOR = {
-    CRITICAL: '#ef4444',
-    HIGH:     '#f97316',
-    MEDIUM:   '#eab308',
-    LOW:      '#22c55e',
-  };
-  const SEV_CLASS = {
-    CRITICAL: 'sev-CRITICAL',
-    HIGH:     'sev-HIGH',
-    MEDIUM:   'sev-MEDIUM',
-    LOW:      'sev-LOW',
-  };
-  const DET_CLASS = {
-    rule_engine: 'det-rule',
-    ml:          'det-ml',
-    both:        'det-both',
-  };
-  const DET_LABEL = {
-    rule_engine: 'Rule',
-    ml:          'ML',
-    both:        'Rule+ML',
-  };
+  const SEV_COLOR = { CRITICAL:'#ef4444', HIGH:'#f97316', MEDIUM:'#eab308', LOW:'#22c55e' };
+  const DET_CLS   = { rule_engine:'det-rule', ml:'det-ml', both:'det-both' };
+  const DET_LBL   = { rule_engine:'Rule', ml:'ML', both:'Rule+ML' };
 
-  /* ── State ──────────────────────────────────── */
-  const MAX_ROWS = 300;
+  /* ── State ─────────────────────────────────────── */
+  const MAX_CARDS  = 300;
   let selectedId   = null;
-  const alertMap   = new Map();   // alert_id → alert
+  const alertMap   = new Map();
   let ws           = null;
   let wsDelay      = 1000;
-  let rowCount     = 0;
-  let activeFilter = 'ALL';       // severity filter
-  let paused       = false;       // stream pause state
-  const pauseQueue = [];          // alerts buffered while paused
+  let activeFilter = 'ALL';
+  let paused       = false;
+  const pauseQueue = [];
 
-  /* ── Tiny DOM helpers (no dynamic HTML) ─────── */
-  function cel(tag, cls) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    return e;
-  }
+  /* ── DOM helpers ───────────────────────────────── */
+  function cel(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
+  function txt(tag, cls, content) { const e = cel(tag, cls); e.textContent = content; return e; }
+  function badge(cls, label) { return txt('span', 'badge ' + cls, label); }
 
-  function txt(tag, cls, content) {
-    const e = cel(tag, cls);
-    e.textContent = content;
-    return e;
-  }
-
-  function badge(cls, label) {
-    return txt('span', 'badge ' + cls, label);
-  }
-
-  /* ── Formatting ─────────────────────────────── */
+  /* ── Formatting ─────────────────────────────────── */
   function fmtTime(iso) {
-    try { return new Date(iso).toLocaleTimeString('en-US', { hour12: false }); }
-    catch { return String(iso || '').slice(11, 19) || '—'; }
+    try { return new Date(iso).toLocaleTimeString('en-US', { hour12:false }); }
+    catch { return String(iso||'').slice(11,19)||'—'; }
   }
+  function truncate(s, n) { const str = String(s||''); return str.length > n ? str.slice(0,n)+'…' : str; }
 
-  function truncate(s, n) {
-    const str = String(s || '');
-    return str.length > n ? str.slice(0, n) + '…' : str;
-  }
-
-  /* ── Toast ──────────────────────────────────── */
+  /* ── Toast ─────────────────────────────────────── */
   function toast(msg, ms) {
     const t = document.getElementById('toast');
-    t.textContent = msg;
-    t.classList.add('show');
+    t.textContent = msg; t.classList.add('show');
     clearTimeout(t._tid);
-    t._tid = setTimeout(() => t.classList.remove('show'), ms || 3000);
+    t._tid = setTimeout(() => t.classList.remove('show'), ms||3000);
   }
 
-  /* ── Status helpers ─────────────────────────── */
+  /* ── Status helpers ─────────────────────────────── */
   function setLive(state) {
-    const badge = document.getElementById('liveBadge');
-    const lbl   = document.getElementById('liveLabel');
-    badge.className = 'live-badge ' + (state === 'online' ? 'online' : 'offline');
-    if (state === 'online')        { lbl.textContent = '● LIVE'; }
-    else if (state === 'offline')  { lbl.textContent = '○ OFFLINE'; }
-    else                           { lbl.textContent = '○ RECONNECTING…'; }
+    const b = document.getElementById('liveBadge');
+    const l = document.getElementById('liveLabel');
+    b.className = 'live-badge ' + (state === 'online' ? 'online' : 'offline');
+    l.textContent = state === 'online' ? 'LIVE' : state === 'offline' ? 'OFFLINE' : 'RECONNECTING';
   }
+  function setWsStatus(msg) { const e = document.getElementById('wsStatus'); if(e) e.textContent = msg; }
+  function setActionStatus(msg) { const e = document.getElementById('actionStatus'); if(e) e.textContent = msg; }
 
-  function setWsStatus(msg) {
-    document.getElementById('wsStatus').textContent = msg;
-  }
-
-  function setActionStatus(msg) {
-    document.getElementById('actionStatus').textContent = msg;
-  }
-
-  /* ── Stats ──────────────────────────────────── */
+  /* ── Stats ─────────────────────────────────────── */
   function applyStats(s) {
-    document.getElementById('sv-total').textContent    = s.total    ?? 0;
-    document.getElementById('sv-critical').textContent = s.critical ?? 0;
-    document.getElementById('sv-high').textContent     = s.high     ?? 0;
-    document.getElementById('sv-medium').textContent   = s.medium   ?? 0;
-    document.getElementById('sv-apm').textContent      = typeof s.alerts_per_minute === 'number'
+    document.getElementById('hv-total').textContent    = s.total    ?? 0;
+    document.getElementById('hv-critical').textContent = s.critical ?? 0;
+    document.getElementById('hv-high').textContent     = s.high     ?? 0;
+    document.getElementById('hv-medium').textContent   = s.medium   ?? 0;
+    document.getElementById('hv-apm').textContent      = typeof s.alerts_per_minute === 'number'
       ? Math.round(s.alerts_per_minute) : 0;
   }
-
   async function fetchStats() {
-    try {
-      const r = await fetch('/api/stats');
-      if (r.ok) applyStats(await r.json());
-    } catch { /* silent fallback */ }
+    try { const r = await fetch('/api/stats'); if(r.ok) applyStats(await r.json()); } catch {}
   }
-
-  /* ── Health (drives LIVE badge) ─────────────── */
   async function fetchHealth() {
     try {
-      const r = await fetch('/api/health');
-      if (!r.ok) throw new Error();
-      const h = await r.json();
-      setLive(h.pipeline ? 'online' : 'offline');
-    } catch {
-      setLive('offline');
-    }
+      const r = await fetch('/api/health'); if(!r.ok) throw new Error();
+      const h = await r.json(); setLive(h.pipeline ? 'online' : 'offline');
+    } catch { setLive('offline'); }
   }
 
-  /* ── Copy IP to clipboard ───────────────────── */
+  /* ── Copy IP ─────────────────────────────────────── */
   function copyIp(ip) {
-    if (!navigator.clipboard) {
-      toast('Clipboard unavailable in this context');
-      return;
-    }
+    if (!navigator.clipboard) { toast('Clipboard unavailable'); return; }
     navigator.clipboard.writeText(ip).then(
       () => toast('✓ Copied ' + ip),
       () => toast('Copy failed')
     );
   }
 
-  /* ── Build a table row (no innerHTML) ───────── */
-  function buildRow(alert, animate) {
-    const tr = document.createElement('tr');
-    tr.id = 'row-' + alert.alert_id;
-    tr.dataset.sev = alert.severity || 'LOW';
-    if (animate) tr.classList.add('row-new');
-    if (activeFilter !== 'ALL' && tr.dataset.sev !== activeFilter) {
-      tr.style.display = 'none';
-    }
-
-    // Time
-    const tdTime = txt('td', 'c-time', fmtTime(alert.timestamp));
-
-    // Severity badge
-    const tdSev = cel('td', 'c-sev');
-    tdSev.appendChild(badge(SEV_CLASS[alert.severity] || 'sev-LOW', alert.severity || '?'));
-
-    // Type
-    const tdType = txt('td', 'c-type', alert.type || '—');
-
-    // Source IP (clickable copy)
-    const tdSrc = cel('td', 'c-src');
-    const ipSpan = txt('span', 'ip-copy', alert.src_ip || '—');
-    ipSpan.title = 'Click to copy';
-    ipSpan.dataset.ip = alert.src_ip || '';
-    ipSpan.addEventListener('click', (e) => {
-      e.stopPropagation();
-      copyIp(e.currentTarget.dataset.ip);
-    });
-    tdSrc.appendChild(ipSpan);
-
-    // Destination
-    const tdDst = txt('td', 'c-dst',
-      (alert.dst_ip || '—') + ':' + (alert.dst_port || '—'));
-
-    // Detection badge
-    const tdDet = cel('td', 'c-det');
-    const src = alert.detection_source || 'rule_engine';
-    tdDet.appendChild(badge(DET_CLASS[src] || 'det-rule', DET_LABEL[src] || src));
-
-    // Explanation (truncated, full text in data-tooltip)
-    const expl = alert.llm_explanation || alert.rule_name || '—';
-    const tdExpl = txt('td', 'c-expl', truncate(expl, 80));
-    if (expl.length > 80) {
-      tdExpl.dataset.tooltip = expl;
-    }
-    tdExpl.title = expl;   // native tooltip fallback
-
-    tr.append(tdTime, tdSev, tdType, tdSrc, tdDst, tdDet, tdExpl);
-    tr.addEventListener('click', () => selectAlert(alert.alert_id));
-    return tr;
-  }
-
-  /* ── Prepend alert to table ─────────────────── */
-  function removeEmpty() {
-    const e = document.getElementById('emptyRow');
-    if (e) e.remove();
-  }
-
+  /* ── Filter count ────────────────────────────────── */
   function updateFilterCount() {
-    const tbody = document.getElementById('alertBody');
+    const list = document.getElementById('alertList');
     const total = alertMap.size;
     let visible = 0;
-    for (const tr of tbody.rows) {
-      if (tr.id === 'emptyRow') continue;
-      if (tr.style.display !== 'none') visible++;
+    for (const c of list.querySelectorAll('.alert-card')) {
+      if (c.style.display !== 'none') visible++;
     }
     const el = document.getElementById('filterCount');
-    if (el) {
-      el.textContent = activeFilter === 'ALL'
-        ? total + ' alerts'
-        : visible + ' / ' + total + ' shown';
-    }
+    if (el) el.textContent = activeFilter === 'ALL' ? total+' alerts' : visible+' / '+total;
   }
 
+  /* ── Build alert card ─────────────────────────────── */
+  function buildCard(alert, animate) {
+    const sev  = alert.severity || 'LOW';
+    const src  = alert.detection_source || 'rule_engine';
+
+    const card = cel('div', 'alert-card' + (animate ? ' card-new' : ''));
+    card.id = 'card-' + alert.alert_id;
+    card.dataset.sev     = sev;
+    card.dataset.alertId = alert.alert_id;
+    if (activeFilter !== 'ALL' && sev !== activeFilter) card.style.display = 'none';
+
+    // Severity bar
+    card.appendChild(cel('div', 'sev-bar sev-bar-' + sev));
+
+    // Card body
+    const body = cel('div', 'card-body');
+
+    // Row 1
+    body.appendChild(badge('sev-'+sev+' card-sev', sev));
+    body.appendChild(txt('div', 'card-type', alert.type || '—'));
+
+    const right = cel('div', 'card-right');
+    right.appendChild(badge(DET_CLS[src]||'det-rule', DET_LBL[src]||src));
+    right.appendChild(txt('span', 'card-time', fmtTime(alert.timestamp)));
+    body.appendChild(right);
+
+    // Row 2
+    const bot = cel('div', 'card-bottom');
+    const ipEl = txt('span', 'card-ip', alert.src_ip || '—');
+    ipEl.dataset.ip = alert.src_ip || '';
+    ipEl.addEventListener('click', e => { e.stopPropagation(); copyIp(e.currentTarget.dataset.ip); });
+    bot.appendChild(ipEl);
+
+    if (alert.dst_ip) {
+      bot.appendChild(txt('span', 'card-arrow', '→'));
+      const dstEl = txt('span', 'card-ip', alert.dst_ip + ':' + (alert.dst_port||''));
+      dstEl.dataset.ip = alert.dst_ip;
+      dstEl.addEventListener('click', e => { e.stopPropagation(); copyIp(e.currentTarget.dataset.ip); });
+      bot.appendChild(dstEl);
+    }
+    const expl = alert.llm_explanation || alert.rule_name || '';
+    if (expl) bot.appendChild(txt('span', 'card-expl', truncate(expl, 55)));
+    body.appendChild(bot);
+
+    card.appendChild(body);
+    card.addEventListener('click', () => selectAlert(alert.alert_id));
+    return card;
+  }
+
+  /* ── Remove empty state ─────────────────────────── */
+  function removeEmptyState() { const e = document.getElementById('emptyState'); if(e) e.remove(); }
+
+  /* ── Insert alert ────────────────────────────────── */
   function _insertAlert(alert, animate) {
     alertMap.set(alert.alert_id, alert);
-    const tbody = document.getElementById('alertBody');
-    tbody.prepend(buildRow(alert, animate));
-    rowCount++;
+    const list = document.getElementById('alertList');
+    list.prepend(buildCard(alert, animate));
 
-    while (tbody.rows.length > MAX_ROWS) {
-      const last = tbody.rows[tbody.rows.length - 1];
-      if (last.id && last.id.startsWith('row-')) alertMap.delete(last.id.slice(4));
-      tbody.removeChild(last);
-      rowCount--;
+    const cards = list.querySelectorAll('.alert-card');
+    if (cards.length > MAX_CARDS) {
+      const oldest = cards[cards.length - 1];
+      const id = oldest.dataset.alertId;
+      if (id) alertMap.delete(id);
+      oldest.remove();
     }
-
     updateFilterCount();
-    setActionStatus('Last alert: ' + fmtTime(alert.timestamp));
+    setActionStatus('Last: ' + fmtTime(alert.timestamp));
   }
 
   function prependAlert(alert, animate) {
@@ -957,372 +576,281 @@ tbody tr.selected:hover { background: rgba(0,255,136,0.09) !important; }
     _insertAlert(alert, animate);
   }
 
-  /* ── Detail panel ───────────────────────────── */
-  function buildDetailMeta(alert) {
-    const wrap = cel('div', 'detail-meta');
-
-    function kv(label, value) {
-      const d = cel('div', 'detail-kv');
-      d.appendChild(txt('div', 'detail-kv-label', label));
-      d.appendChild(txt('div', 'detail-kv-value', value));
-      return d;
-    }
-
-    wrap.appendChild(kv('Alert ID',   alert.alert_id));
-    wrap.appendChild(kv('Timestamp',  fmtTime(alert.timestamp)));
-    wrap.appendChild(kv('Rule',       alert.rule_name || '—'));
-    wrap.appendChild(kv('Score',      typeof alert.anomaly_score === 'number'
-      ? alert.anomaly_score.toFixed(3) : '—'));
-    wrap.appendChild(kv('Source',     (alert.src_ip || '—') + ' → ' +
-      (alert.dst_ip || '—') + ':' + (alert.dst_port || '—')));
-    wrap.appendChild(kv('Detection',  DET_LABEL[alert.detection_source] || alert.detection_source || '—'));
-    return wrap;
-  }
-
+  /* ── Select alert ────────────────────────────────── */
   function selectAlert(id) {
-    // Clear old selection highlight
     if (selectedId) {
-      const prev = document.getElementById('row-' + selectedId);
+      const prev = document.getElementById('card-' + selectedId);
       if (prev) prev.classList.remove('selected');
     }
     selectedId = id;
-    const tr = document.getElementById('row-' + id);
-    if (tr) tr.classList.add('selected');
+    const card = document.getElementById('card-' + id);
+    if (card) card.classList.add('selected');
     const alert = alertMap.get(id);
-    if (!alert) return;
-
-    const left = document.getElementById('detailLeft');
-    while (left.firstChild) left.removeChild(left.firstChild);
-
-    left.appendChild(txt('div', 'detail-section-label', alert.type + '  ·  ' + alert.severity));
-    left.appendChild(buildDetailMeta(alert));
-
-    if (alert.llm_explanation) {
-      left.appendChild(txt('div', 'detail-section-label', 'AI Explanation'));
-      left.appendChild(txt('div', 'detail-explanation', alert.llm_explanation));
-    }
-
-    buildShapChart(alert);
+    if (alert) renderDetail(alert);
   }
 
-  /* ── SHAP bar chart (pure CSS, no canvas) ───── */
-  function buildShapChart(alert) {
-    const panel = document.getElementById('shapPanel');
+  /* ── Render detail panel ─────────────────────────── */
+  function renderDetail(alert) {
+    const panel = document.getElementById('detailPanel');
     while (panel.firstChild) panel.removeChild(panel.firstChild);
 
-    panel.appendChild(txt('div', 'shap-title', 'SHAP Feature Importance'));
+    const sev = alert.severity || 'LOW';
+    const src = alert.detection_source || 'rule_engine';
+    const col = SEV_COLOR[sev] || '#22c55e';
 
-    const factors = (Array.isArray(alert.shap_factors) ? alert.shap_factors : []).slice(0, 3);
-    if (factors.length === 0) {
-      panel.appendChild(txt('p', 'shap-empty', 'No SHAP data (rule-based detection).'));
-      return;
+    // Header
+    const hdr = cel('div', 'detail-header');
+    const bar = cel('div', 'detail-sev-bar'); bar.style.background = col;
+    hdr.appendChild(bar);
+
+    const hdrBody = cel('div', 'detail-hdr-body');
+    hdrBody.appendChild(txt('div', 'detail-type', alert.type || '—'));
+    const badges = cel('div', 'detail-badges');
+    badges.appendChild(badge('sev-'+sev, sev));
+    badges.appendChild(badge(DET_CLS[src]||'det-rule', 'via '+(DET_LBL[src]||src)));
+    if (typeof alert.anomaly_score === 'number')
+      badges.appendChild(txt('span', 'kv-val', 'score: '+alert.anomaly_score.toFixed(3)));
+    hdrBody.appendChild(badges);
+    hdr.appendChild(hdrBody);
+    panel.appendChild(hdr);
+
+    // KV grid
+    function kv(lbl, val) {
+      const d = cel('div','kv');
+      d.appendChild(txt('div','kv-lbl',lbl));
+      d.appendChild(txt('div','kv-val',val));
+      return d;
+    }
+    const grid = cel('div','kv-grid');
+    grid.appendChild(kv('Alert ID',  (alert.alert_id||'').slice(0,16)+'…'));
+    grid.appendChild(kv('Time',       new Date(alert.timestamp).toLocaleString()));
+    grid.appendChild(kv('Source IP',  alert.src_ip||'—'));
+    grid.appendChild(kv('Dest',       (alert.dst_ip||'—')+':'+(alert.dst_port||'—')));
+    grid.appendChild(kv('Rule',       alert.rule_name||'—'));
+    grid.appendChild(kv('Detection',  DET_LBL[src]||src));
+    panel.appendChild(grid);
+
+    // LLM explanation
+    if (alert.llm_explanation) {
+      panel.appendChild(txt('div','sec-lbl','AI Threat Assessment'));
+      panel.appendChild(txt('div','insight-card', alert.llm_explanation));
     }
 
-    // Normalize bar widths to the max absolute contribution
-    const maxAbs = factors.reduce((m, f) => Math.max(m, Math.abs(f.shap_contribution || 0)), 0.001);
-    const barColor = SEV_COLOR[alert.severity] || SEV_COLOR.HIGH;
-
-    factors.forEach(f => {
-      const row = cel('div', 'shap-row');
-
-      const name = txt('div', 'shap-feat-name', f.feature || '—');
-      name.title = f.feature || '—';
-
-      const track = cel('div', 'shap-bar-track');
-      const fill  = cel('div', 'shap-bar-fill');
-      fill.style.width = (Math.abs(f.shap_contribution || 0) / maxAbs * 100).toFixed(1) + '%';
-      fill.style.background = barColor;
-      track.appendChild(fill);
-
-      const val = txt('div', 'shap-val',
-        typeof f.value === 'number' ? f.value.toFixed(2) : '—');
-
-      row.append(name, track, val);
-      panel.appendChild(row);
-    });
+    // SHAP
+    panel.appendChild(txt('div','sec-lbl','SHAP Feature Attribution'));
+    const factors = Array.isArray(alert.shap_factors) ? alert.shap_factors.slice(0,5) : [];
+    if (factors.length > 0) {
+      const maxAbs = factors.reduce((m,f) => Math.max(m, Math.abs(f.shap_contribution||0)), 0.001);
+      const shList = cel('div','shap-list');
+      factors.forEach(f => {
+        const row  = cel('div','shap-row');
+        row.appendChild(txt('div','shap-name', f.feature||'—'));
+        const track = cel('div','shap-track');
+        const fill  = cel('div','shap-fill');
+        fill.style.width      = '0%';
+        fill.style.background = col;
+        track.appendChild(fill);
+        row.appendChild(track);
+        row.appendChild(txt('div','shap-val', typeof f.value === 'number' ? f.value.toFixed(2) : '—'));
+        shList.appendChild(row);
+        requestAnimationFrame(() => {
+          fill.style.width = (Math.abs(f.shap_contribution||0) / maxAbs * 100).toFixed(1) + '%';
+        });
+      });
+      panel.appendChild(shList);
+    } else {
+      panel.appendChild(txt('p','shap-empty','No SHAP data — rule-based detection.'));
+    }
   }
 
-  /* ── Initial data load ──────────────────────── */
+  /* ── Load initial alerts ─────────────────────────── */
   async function loadAlerts() {
     try {
-      const r = await fetch('/api/alerts');
-      if (!r.ok) return;
+      const r = await fetch('/api/alerts'); if(!r.ok) return;
       const data = await r.json();
       const alerts = data.alerts || [];
       if (alerts.length > 0) {
-        removeEmpty();
-        for (let i = alerts.length - 1; i >= 0; i--) {
-          _insertAlert(alerts[i], false);
-        }
+        removeEmptyState();
+        for (let i = alerts.length-1; i >= 0; i--) _insertAlert(alerts[i], false);
         updateFilterCount();
       }
-    } catch { /* silent */ }
+    } catch {}
   }
 
-  /* ── WebSocket with exponential backoff ─────── */
+  /* ── WebSocket (alerts) ──────────────────────────── */
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    setWsStatus('○ Connecting…');
-
+    setWsStatus('connecting…');
     ws = new WebSocket(proto + '://' + location.host + '/ws/alerts');
 
     ws.addEventListener('open', () => {
-      wsDelay = 1000;
-      setWsStatus('● Connected to ' + location.host);
-      fetchHealth();
+      wsDelay = 1000; setWsStatus('● '+location.host); fetchHealth();
     });
-
-    ws.addEventListener('message', (evt) => {
-      let msg;
-      try { msg = JSON.parse(evt.data); } catch { return; }
+    ws.addEventListener('message', evt => {
+      let msg; try { msg = JSON.parse(evt.data); } catch { return; }
       if (!msg || msg.type === 'ping') return;
-      removeEmpty();
-      prependAlert(msg, true);
-      fetchStats();
+      removeEmptyState(); prependAlert(msg, true); fetchStats();
     });
-
     ws.addEventListener('close', () => {
-      fetchHealth();
-      const delay = wsDelay;
-      wsDelay = Math.min(wsDelay * 2, 30000);
-      setWsStatus('○ Reconnecting in ' + (delay / 1000).toFixed(0) + 's…');
-      setTimeout(connect, delay);
+      setLive('offline');
+      const d = wsDelay; wsDelay = Math.min(wsDelay * 2, 30000);
+      setWsStatus('reconnecting in ' + (d/1000|0) + 's…');
+      setTimeout(connect, d);
     });
-
     ws.addEventListener('error', () => ws.close());
   }
 
-  /* ── Simulate Attack ────────────────────────── */
-  document.getElementById('btnSimulate').addEventListener('click', async () => {
-    const btn = document.getElementById('btnSimulate');
-    btn.disabled = true;
-    btn.textContent = '↻ Injecting…';
-    try {
-      const r = await fetch('/api/simulate', { method: 'POST' });
-      const data = await r.json();
-      if (r.ok) {
-        toast('⚡ Attack sequence injected — ' + data.count + ' events');
-      } else {
-        toast('Error: ' + (data.detail || 'unknown'));
+  /* ── Filter ──────────────────────────────────────── */
+  function applyFilter(sev) {
+    activeFilter = sev;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.sev === sev));
+    const list = document.getElementById('alertList');
+    for (const c of list.querySelectorAll('.alert-card'))
+      c.style.display = (sev === 'ALL' || c.dataset.sev === sev) ? '' : 'none';
+    updateFilterCount();
+  }
+  document.querySelectorAll('.filter-btn').forEach(b => b.addEventListener('click', () => applyFilter(b.dataset.sev)));
+
+  /* ── Pause / Resume ──────────────────────────────── */
+  document.getElementById('btnPause').addEventListener('click', () => {
+    paused = !paused;
+    const btn = document.getElementById('btnPause');
+    if (paused) {
+      btn.classList.add('paused'); btn.textContent = '▶ Resume';
+    } else {
+      btn.classList.remove('paused'); btn.textContent = '⏸ Pause';
+      if (pauseQueue.length > 0) {
+        removeEmptyState();
+        while (pauseQueue.length > 0) _insertAlert(pauseQueue.shift(), false);
+        fetchStats();
       }
-    } catch (e) {
-      toast('Network error — is the pipeline running?');
-    } finally {
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.textContent = '🚀 Simulate Attack';
-      }, 2500);
     }
   });
 
-  /* ── Clear display ──────────────────────────── */
-  document.getElementById('btnClear').addEventListener('click', () => {
-    const tbody = document.getElementById('alertBody');
-    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
-    alertMap.clear();
-    rowCount = 0;
-    selectedId = null;
+  /* ── Keyboard navigation ─────────────────────────── */
+  document.getElementById('alertList').addEventListener('keydown', e => {
+    const cards = Array.from(document.querySelectorAll('.alert-card')).filter(c => c.style.display !== 'none');
+    if (!cards.length) return;
+    const idx = cards.findIndex(c => c.dataset.alertId === selectedId);
 
-    const tr = document.createElement('tr');
-    tr.id = 'emptyRow';
-    const td = document.createElement('td');
-    td.colSpan = 7;
-    const div = cel('div', 'empty-state');
-    div.appendChild(txt('div', 'empty-icon', '🛡️'));
-    div.appendChild(txt('p', '', 'Display cleared — new alerts will appear here'));
-    td.appendChild(div);
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-
-    const left = document.getElementById('detailLeft');
-    while (left.firstChild) left.removeChild(left.firstChild);
-    left.appendChild(txt('p', 'detail-placeholder', '← Select an alert row to inspect'));
-
-    const shap = document.getElementById('shapPanel');
-    while (shap.firstChild) shap.removeChild(shap.firstChild);
-    shap.appendChild(txt('div', 'shap-title', 'SHAP Feature Importance'));
-    shap.appendChild(txt('p', 'shap-empty', 'No alert selected.'));
-
-    applyStats({ total:0, critical:0, high:0, medium:0, alerts_per_minute:0 });
-    setActionStatus('Display cleared');
-    pauseQueue.length = 0;
-    updateFilterCount();
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = cards[idx < cards.length-1 ? idx+1 : 0];
+      selectAlert(next.dataset.alertId); next.scrollIntoView({block:'nearest'});
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prev = cards[idx > 0 ? idx-1 : cards.length-1];
+      selectAlert(prev.dataset.alertId); prev.scrollIntoView({block:'nearest'});
+    } else if (e.key === 'Escape') {
+      if (selectedId) {
+        const c = document.getElementById('card-'+selectedId);
+        if (c) c.classList.remove('selected');
+        selectedId = null;
+        const panel = document.getElementById('detailPanel');
+        while (panel.firstChild) panel.removeChild(panel.firstChild);
+        const emp = cel('div','detail-empty');
+        emp.appendChild(txt('div','detail-empty-glyph','◈'));
+        emp.appendChild(txt('div','detail-empty-title','No alert selected'));
+        emp.appendChild(txt('div','detail-empty-sub','Select an alert from the stream to inspect'));
+        emp.appendChild(txt('div','detail-empty-hint','↑ ↓ arrows · Enter · Esc to clear · P to pause'));
+        panel.appendChild(emp);
+      }
+    } else if ((e.key === 'p' || e.key === 'P') && !e.ctrlKey) {
+      document.getElementById('btnPause').click();
+    }
   });
 
-  /* ── Pipeline log terminal ──────────────────── */
-  const MAX_LOG_LINES = 200;
-  let termPinned  = true;
-  let logWs       = null;
-  let logWsDelay  = 1000;
+  /* ── Simulate attack ─────────────────────────────── */
+  document.getElementById('btnSimulate').addEventListener('click', async () => {
+    const btn = document.getElementById('btnSimulate');
+    btn.disabled = true; btn.textContent = '↻ Injecting…';
+    try {
+      const r = await fetch('/api/simulate', {method:'POST'});
+      const data = await r.json();
+      r.ok ? toast('⚡ Attack sequence injected — '+data.count+' events')
+           : toast('Error: '+(data.detail||'unknown'));
+    } catch { toast('Network error — is the pipeline running?'); }
+    finally {
+      setTimeout(() => { btn.disabled = false; btn.textContent = '⚡ Simulate'; }, 2500);
+    }
+  });
+
+  /* ── Clear ───────────────────────────────────────── */
+  document.getElementById('btnClear').addEventListener('click', () => {
+    const list = document.getElementById('alertList');
+    while (list.firstChild) list.removeChild(list.firstChild);
+    alertMap.clear(); selectedId = null; pauseQueue.length = 0; paused = false;
+
+    const emp = cel('div','empty-state'); emp.id = 'emptyState';
+    emp.appendChild(txt('div','empty-icon','🛡'));
+    emp.appendChild(txt('p','','Display cleared'));
+    list.appendChild(emp);
+
+    const panel = document.getElementById('detailPanel');
+    while (panel.firstChild) panel.removeChild(panel.firstChild);
+    const empD = cel('div','detail-empty');
+    empD.appendChild(txt('div','detail-empty-glyph','◈'));
+    empD.appendChild(txt('div','detail-empty-title','No alert selected'));
+    panel.appendChild(empD);
+
+    applyStats({total:0,critical:0,high:0,medium:0,alerts_per_minute:0});
+    setActionStatus('Cleared');
+    updateFilterCount();
+    const p = document.getElementById('btnPause');
+    if(p){p.classList.remove('paused');p.textContent='⏸ Pause';}
+  });
+
+  /* ── Pipeline terminal ───────────────────────────── */
+  const MAX_LINES = 200;
+  let termPinned = true, logWs = null, logWsDelay = 1000;
 
   function logColor(line) {
     if (/\] ERROR   |\] CRITICAL/.test(line)) return '#ef4444';
     if (/\] WARNING /.test(line) && line.includes('ALERT')) return '#ef4444';
     if (/\] WARNING /.test(line)) return '#fbbf24';
-    if (/\] DEBUG   /.test(line)) return '#4b5563';
+    if (/\] DEBUG   /.test(line)) return '#2d4a3e';
     return '#00ff41';
   }
 
   function addLogLine(text) {
     if (!text || text === '__ping__') return;
     const body = document.getElementById('termBody');
-    const el   = document.createElement('div');
-    el.className = 'log-line';
-
-    // Split [HH:MM:SS] timestamp from the rest
+    const el = document.createElement('div'); el.className = 'log-line';
     const m = text.match(/^(\[\d{2}:\d{2}:\d{2}\])([\s\S]*)/);
     if (m) {
-      const ts = document.createElement('span');
-      ts.className  = 'log-ts';
-      ts.textContent = m[1];
-      const rest = document.createElement('span');
-      rest.style.color = logColor(text);
-      rest.textContent = m[2];
-      el.appendChild(ts);
-      el.appendChild(rest);
-    } else {
-      el.style.color  = logColor(text);
-      el.textContent  = text;
-    }
-
+      const ts = document.createElement('span'); ts.className = 'log-ts'; ts.textContent = m[1];
+      const rest = document.createElement('span'); rest.style.color = logColor(text); rest.textContent = m[2];
+      el.appendChild(ts); el.appendChild(rest);
+    } else { el.style.color = logColor(text); el.textContent = text; }
     body.appendChild(el);
-
-    // Evict oldest lines beyond limit
-    while (body.children.length > MAX_LOG_LINES) {
-      body.removeChild(body.firstChild);
-    }
-
+    while (body.children.length > MAX_LINES) body.removeChild(body.firstChild);
     if (termPinned) body.scrollTop = body.scrollHeight;
   }
 
-  function setTermBadge(online) {
-    const b = document.getElementById('termBadge');
-    if (!b) return;
-    if (online) {
-      b.textContent = '● live';
-      b.classList.add('online');
-    } else {
-      b.textContent = '○ reconnecting…';
-      b.classList.remove('online');
-    }
+  function setTermBadge(live) {
+    const b = document.getElementById('termBadge'); if(!b) return;
+    b.textContent = live ? '● live' : '○ reconnecting…';
+    b.classList.toggle('live', live);
   }
 
   function connectLogs() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     logWs = new WebSocket(proto + '://' + location.host + '/ws/logs');
-
-    logWs.addEventListener('open', () => {
-      logWsDelay = 1000;
-      setTermBadge(true);
-    });
-
-    logWs.addEventListener('message', (evt) => {
-      addLogLine(evt.data);
-    });
-
-    logWs.addEventListener('close', () => {
+    logWs.addEventListener('open',    () => { logWsDelay = 1000; setTermBadge(true); });
+    logWs.addEventListener('message', e  => addLogLine(e.data));
+    logWs.addEventListener('close',   () => {
       setTermBadge(false);
-      const delay = logWsDelay;
-      logWsDelay = Math.min(logWsDelay * 2, 30000);
-      setTimeout(connectLogs, delay);
+      const d = logWsDelay; logWsDelay = Math.min(logWsDelay * 2, 30000);
+      setTimeout(connectLogs, d);
     });
-
     logWs.addEventListener('error', () => logWs.close());
   }
 
-  // Unpin auto-scroll when user manually scrolls up
   document.getElementById('termBody').addEventListener('scroll', function () {
     termPinned = this.scrollTop + this.clientHeight >= this.scrollHeight - 24;
   });
 
-  /* ── Severity filter ────────────────────────── */
-  function applyFilter(sev) {
-    activeFilter = sev;
-
-    // Update button active states
-    document.querySelectorAll('.filter-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.sev === sev);
-    });
-
-    // Show/hide rows
-    const tbody = document.getElementById('alertBody');
-    for (const tr of tbody.rows) {
-      if (tr.id === 'emptyRow') continue;
-      tr.style.display = (sev === 'ALL' || tr.dataset.sev === sev) ? '' : 'none';
-    }
-
-    updateFilterCount();
-  }
-
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => applyFilter(btn.dataset.sev));
-  });
-
-  /* ── Pause / Resume ─────────────────────────── */
-  document.getElementById('btnPause').addEventListener('click', () => {
-    paused = !paused;
-    const btn = document.getElementById('btnPause');
-    if (paused) {
-      btn.classList.add('paused');
-      btn.textContent = '▶ Resume';
-    } else {
-      btn.classList.remove('paused');
-      btn.textContent = '⏸ Pause';
-      // Flush buffered alerts
-      if (pauseQueue.length > 0) {
-        removeEmpty();
-        while (pauseQueue.length > 0) {
-          _insertAlert(pauseQueue.shift(), false);
-        }
-        fetchStats();
-      }
-    }
-  });
-
-  /* ── Keyboard navigation ────────────────────── */
-  (function initKeyboard() {
-    const wrap = document.querySelector('.table-wrap');
-    if (!wrap) return;
-    wrap.tabIndex = 0;
-
-    function visibleRows() {
-      return Array.from(document.querySelectorAll('#alertBody tr[id^="row-"]'))
-        .filter(tr => tr.style.display !== 'none');
-    }
-
-    wrap.addEventListener('keydown', (e) => {
-      const rows = visibleRows();
-      if (rows.length === 0) return;
-
-      const currentIdx = rows.findIndex(tr => tr.id === 'row-' + selectedId);
-
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        const next = currentIdx < rows.length - 1 ? rows[currentIdx + 1] : rows[0];
-        selectAlert(next.id.slice(4));
-        next.scrollIntoView({ block: 'nearest' });
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        const prev = currentIdx > 0 ? rows[currentIdx - 1] : rows[rows.length - 1];
-        selectAlert(prev.id.slice(4));
-        prev.scrollIntoView({ block: 'nearest' });
-      } else if (e.key === 'Escape') {
-        if (selectedId) {
-          const tr = document.getElementById('row-' + selectedId);
-          if (tr) tr.classList.remove('selected');
-          selectedId = null;
-          const left = document.getElementById('detailLeft');
-          while (left.firstChild) left.removeChild(left.firstChild);
-          left.appendChild(txt('p', 'detail-placeholder', '← Select an alert row to inspect'));
-          buildShapChart({});
-        }
-      } else if ((e.key === 'p' || e.key === 'P') && !e.ctrlKey) {
-        document.getElementById('btnPause').click();
-      }
-    });
-  }());
-
-  /* ── Boot ───────────────────────────────────── */
+  /* ── Boot ────────────────────────────────────────── */
   async function boot() {
     await Promise.all([fetchHealth(), loadAlerts(), fetchStats()]);
     connect();
